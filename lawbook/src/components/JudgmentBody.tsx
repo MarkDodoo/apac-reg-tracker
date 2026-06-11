@@ -53,8 +53,8 @@ export function JudgmentBody({
 
   return (
     <div>
-      <article className="whitespace-pre-wrap font-serif text-[15px] leading-7 text-foreground/90">
-        {text}
+      <article className="flex max-w-[68ch] flex-col gap-4 font-serif text-[15px] leading-7 text-foreground/90">
+        {renderJudgment(text)}
       </article>
 
       {error && <p className="mt-4 text-sm text-accent">{error}</p>}
@@ -87,4 +87,80 @@ export function JudgmentBody({
       )}
     </div>
   );
+}
+
+interface Block {
+  key: string;
+  kind: "heading" | "numbered" | "para";
+  num?: string;
+  body: string;
+}
+
+/**
+ * The raw body_text wraps lines with stray single newlines and separates
+ * paragraphs with blank lines. We split on blank lines, rejoin wrapped lines,
+ * then classify each block so numbered paragraphs and section headings render
+ * legibly instead of as one pre-wrapped slab.
+ */
+function parseBlocks(text: string): Block[] {
+  const seen = new Map<string, number>();
+  return text
+    .split(/\n[^\S\n]*\n+/)
+    .map((raw) => raw.replace(/\s*\n\s*/g, " ").trim())
+    .filter(Boolean)
+    .map((body) => {
+      const occ = seen.get(body) ?? 0;
+      seen.set(body, occ + 1);
+      const key = `${body.slice(0, 40)}#${occ}`;
+
+      const numbered = body.match(/^(\d+)[.)]?\s+([\s\S]+)$/);
+      if (numbered) {
+        return {
+          key,
+          kind: "numbered" as const,
+          num: numbered[1],
+          body: numbered[2],
+        };
+      }
+      // Headings: short, capitalised, no leading digit, no trailing sentence punctuation.
+      if (
+        body.length <= 60 &&
+        /^[A-Z(]/.test(body) &&
+        !/^\d/.test(body) &&
+        !/[.;:,?]$/.test(body)
+      ) {
+        return { key, kind: "heading" as const, body };
+      }
+      return { key, kind: "para" as const, body };
+    });
+}
+
+function renderJudgment(text: string) {
+  return parseBlocks(text).map((b) => {
+    if (b.kind === "heading") {
+      return (
+        <h3
+          key={b.key}
+          className="pt-3 font-sans text-xs font-semibold uppercase tracking-[0.14em] text-accent"
+        >
+          {b.body}
+        </h3>
+      );
+    }
+    if (b.kind === "numbered") {
+      return (
+        <p key={b.key} className="flex gap-3">
+          <span className="w-7 shrink-0 select-none text-right font-sans text-sm font-medium tabular-nums text-muted-2">
+            {b.num}
+          </span>
+          <span className="flex-1">{b.body}</span>
+        </p>
+      );
+    }
+    return (
+      <p key={b.key} className="pl-10">
+        {b.body}
+      </p>
+    );
+  });
 }
