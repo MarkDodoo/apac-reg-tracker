@@ -48,10 +48,12 @@ export async function generateMetadata({
 
 export default async function JudgmentPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ citation: string }>;
+  searchParams: Promise<{ q?: string }>;
 }) {
-  const { citation } = await params;
+  const [{ citation }, { q }] = await Promise.all([params, searchParams]);
   const decoded = decodeURIComponent(citation);
   const j = await load(decoded);
 
@@ -114,6 +116,7 @@ export default async function JudgmentPage({
           initialText={j.body_text ?? ""}
           initialLoaded={initialLoaded}
           total={j.body_length ?? initialLoaded}
+          query={q ?? ""}
         />
       </section>
     </main>

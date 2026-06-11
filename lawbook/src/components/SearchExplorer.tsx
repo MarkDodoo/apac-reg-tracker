@@ -236,6 +236,7 @@ export function SearchExplorer({
                     <ResultCard
                       tab={tab}
                       hit={r}
+                      query={data.query}
                       fraction={relevanceFraction(r.score, scores)}
                     />
                   </li>
@@ -340,13 +341,15 @@ function FilterRow({
 function ResultCard({
   tab,
   hit,
+  query,
   fraction,
 }: {
   tab: TabId;
   hit: SearchHit;
+  query: string;
   fraction: number;
 }) {
-  const href = detailHref(tab, hit);
+  const href = detailHref(tab, hit, query);
   const title = cardTitle(tab, hit);
   const meta = cardMeta(tab, hit);
 
@@ -383,9 +386,11 @@ function ResultCard({
   );
 }
 
-function detailHref(tab: TabId, hit: SearchHit): string | null {
+function detailHref(tab: TabId, hit: SearchHit, query: string): string | null {
+  // Carry the search query so the detail page can highlight and jump to matches.
+  const qs = query ? `?q=${encodeURIComponent(query)}` : "";
   if (tab === "judgments" && typeof hit.citation === "string")
-    return `/judgment/${encodeURIComponent(hit.citation)}`;
+    return `/judgment/${encodeURIComponent(hit.citation)}${qs}`;
   if (tab === "statutes" && typeof hit.act_id === "string")
     return `/statute/${encodeURIComponent(hit.act_id)}`;
   return null;
