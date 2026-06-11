@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+/*
+ * Design system — "Authoritative Editorial" for a legal research corpus.
+ * Palette: ink navy + warm parchment + restrained gold accent.
+ * Serif display headings convey legal authority; sans body for readability.
+ */
+:root {
+  --background: #f6f3ec; /* parchment */
+  --surface: #fffdf8; /* paper / cards */
+  --surface-2: #efeadf; /* sunken wells */
+  --foreground: #1b2330; /* ink */
+  --muted: #5c6473; /* slate text */
+  --muted-2: #8a8f9c; /* faint meta */
+  --border: #e0d9c9; /* warm hairline */
+  --border-strong: #cdc4b0;
+  --primary: #14213d; /* deep navy */
+  --primary-fg: #f6f3ec;
+  --accent: #9a7233; /* legal gold */
+  --accent-soft: #f0e6d2;
+  --ring: #14213d;
+  --highlight: #fdf3cf; /* search snippet mark */
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-2: var(--muted-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-ring: var(--ring);
+  --color-highlight: var(--highlight);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-serif: var(--font-serif);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0c1118;
+    --surface: #131b27;
+    --surface-2: #0f1620;
+    --foreground: #e9e7e0;
+    --muted: #9aa3b2;
+    --muted-2: #6b7382;
+    --border: #243140;
+    --border-strong: #33445a;
+    --primary: #c9b277; /* gold becomes the bright brand in dark */
+    --primary-fg: #0c1118;
+    --accent: #d6b677;
+    --accent-soft: #1c2738;
+    --ring: #c9b277;
+    --highlight: #3a3414;
+  }
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--foreground);
+}
+
+/* Snippet highlight rendered from API <b> tags */
+.snippet b {
+  background: var(--highlight);
+  color: inherit;
+  font-weight: 600;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* Thin scrollbars inside scrollable panels */
+.thin-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.thin-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 9999px;
+}
+.thin-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
