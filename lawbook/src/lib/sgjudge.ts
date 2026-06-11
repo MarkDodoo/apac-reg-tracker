@@ -53,6 +53,7 @@ export interface JudgmentDetail {
   body_length: number;
   body_offset: number;
   body_text: string;
+  url?: string; // official eLitigation source
   [k: string]: unknown;
 }
 
@@ -76,6 +77,7 @@ export interface StatuteDetail {
   kind?: string;
   year_enacted?: number;
   sections?: StatuteSection[];
+  url?: string; // official Singapore Statutes Online source
   [k: string]: unknown;
 }
 

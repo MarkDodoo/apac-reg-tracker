@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeftIcon } from "@/components/icons";
+import { ArrowLeftIcon, ExternalLinkIcon } from "@/components/icons";
 import { ApiError, type StatuteDetail, sgjudge } from "@/lib/sgjudge";
 
 async function load(reference: string): Promise<StatuteDetail> {
@@ -65,6 +65,18 @@ export default async function StatutePage({
         <h1 className="font-serif text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
           {s.short_title || s.act_id || decoded}
         </h1>
+
+        {typeof s.url === "string" && (
+          <a
+            href={s.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-5 inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3.5 py-2 text-sm font-medium text-muted transition-colors hover:border-accent hover:text-foreground"
+          >
+            <ExternalLinkIcon className="h-4 w-4" />
+            View official text on Singapore Statutes Online
+          </a>
+        )}
       </header>
 
       {sections.length > 1 && (

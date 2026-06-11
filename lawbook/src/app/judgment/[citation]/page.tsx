@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeftIcon } from "@/components/icons";
+import { ArrowLeftIcon, ExternalLinkIcon } from "@/components/icons";
 import { JudgmentBody } from "@/components/JudgmentBody";
 import {
   ApiError,
@@ -107,6 +107,18 @@ export default async function JudgmentPage({
               </span>
             ))}
           </div>
+        )}
+
+        {typeof j.url === "string" && (
+          <a
+            href={j.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-5 inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3.5 py-2 text-sm font-medium text-muted transition-colors hover:border-accent hover:text-foreground"
+          >
+            <ExternalLinkIcon className="h-4 w-4" />
+            View official judgment on eLitigation
+          </a>
         )}
       </header>
 
