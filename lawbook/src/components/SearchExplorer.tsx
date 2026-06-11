@@ -46,7 +46,6 @@ interface Filters {
   kind?: string;
   speaker?: string;
   since?: string;
-  status?: string;
 }
 
 const DEBOUNCE_MS = 250;
@@ -75,7 +74,9 @@ function runSearch(
         init,
       );
     case "bills":
-      return sgjudge.searchBills(q, { status: f.status, limit: 20 }, init);
+      // The corpus currently exposes a single bill status ('introduced') and no
+      // sessions, so those filters are omitted until the dataset offers variety.
+      return sgjudge.searchBills(q, { limit: 20 }, init);
     case "subsidiary":
       return sgjudge.searchSubsidiary(q, { limit: 20 }, init);
     case "practice":
@@ -328,17 +329,6 @@ function FilterRow({
         value={filters.since ?? ""}
         onChange={(e) => onChange({ since: e.target.value || undefined })}
         className={inputCls}
-      />,
-    );
-  }
-  if (tab === "bills") {
-    items.push(
-      <input
-        key="status"
-        value={filters.status ?? ""}
-        onChange={(e) => onChange({ status: e.target.value || undefined })}
-        placeholder="Status"
-        className={`${inputCls} w-40`}
       />,
     );
   }
