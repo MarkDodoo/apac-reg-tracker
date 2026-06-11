@@ -109,9 +109,10 @@ function parseBlocks(text: string): Block[] {
     .map((raw) => raw.replace(/\s*\n\s*/g, " ").trim())
     .filter(Boolean)
     .map((body) => {
-      const occ = seen.get(body) ?? 0;
-      seen.set(body, occ + 1);
-      const key = `${body.slice(0, 40)}#${occ}`;
+      const prefix = body.slice(0, 40);
+      const occ = seen.get(prefix) ?? 0;
+      seen.set(prefix, occ + 1);
+      const key = `${prefix}#${occ}`;
 
       const numbered = body.match(/^(\d+)[.)]?\s+([\s\S]+)$/);
       if (numbered) {
