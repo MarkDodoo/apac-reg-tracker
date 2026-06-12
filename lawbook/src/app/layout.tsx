@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Inter, Lora } from "next/font/google";
-import Link from "next/link";
 import "./globals.css";
 
 const inter = Inter({
@@ -36,39 +35,10 @@ export default function RootLayout({
       className={`${inter.variable} ${geistMono.variable} ${lora.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
-        <SiteHeader />
         <div className="flex-1">{children}</div>
         <SiteFooter />
       </body>
     </html>
-  );
-}
-
-function SiteHeader() {
-  return (
-    <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/65">
-      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-5 sm:px-8">
-        <Link href="/" className="group flex items-center gap-3">
-          <BrandMark className="h-9 w-9 transition-transform duration-200 group-hover:-translate-y-0.5" />
-          <span className="flex flex-col leading-none">
-            <span className="text-[15px] font-semibold tracking-tight text-foreground">
-              Lawbook
-            </span>
-            <span className="mt-1 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-2">
-              Singapore Legal Research
-            </span>
-          </span>
-        </Link>
-        <a
-          href="https://backend.lawplain.com/v1/stats"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="rounded-full border border-border-strong px-3.5 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-foreground"
-        >
-          API
-        </a>
-      </div>
-    </header>
   );
 }
 
