@@ -66,10 +66,11 @@ button:not(:disabled),
   cursor: pointer;
 }
 
-:focus-visible {
+/* Zero-specificity so utilities like outline-none / custom focus styles win.
+   No border-radius override: the outline follows each element's own curve. */
+:where(:focus-visible) {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
-  border-radius: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {
