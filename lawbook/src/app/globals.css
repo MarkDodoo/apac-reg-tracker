@@ -2,27 +2,26 @@
 @import "tailwindcss";
 
 /*
- * Design system — "Clean Legal Neutral" (Mike-inspired, willchen96/mike).
- * Near-white neutral surfaces, near-black ink, hairline grey borders, and a
- * single azure-blue accent. Inter for UI; EB Garamond for long-form legal
- * text. Generous whitespace, shadcn-style restraint.
+ * Design system — "Clean Legal Search" (Google-calm, light only).
+ * Pure white canvas, Google-grey neutrals, a single blue accent, and very
+ * rounded pill geometry. Inter for UI; Lora for editorial/legal text.
  */
 :root {
-  color-scheme: light; /* always light, like Mike */
-  --background: #fafafa; /* near-white */
+  color-scheme: light; /* always light */
+  --background: #ffffff; /* pure white canvas */
   --surface: #ffffff; /* cards */
-  --surface-2: #f4f4f5; /* sunken wells */
-  --foreground: #18181b; /* near-black ink */
-  --muted: #444448; /* secondary text */
-  --muted-2: #75757c; /* faint meta */
-  --border: #e6e6e8; /* hairline */
-  --border-strong: #d4d4d8;
-  --primary: #212124; /* ink buttons (shadcn style) */
-  --primary-fg: #fafafa;
-  --accent: #0073e6; /* azure (AA-adjusted from rgb(0,136,255)) */
-  --accent-soft: rgba(0, 136, 255, 0.1);
-  --ring: #0088ff; /* signature azure focus */
-  --highlight: rgba(0, 136, 255, 0.16); /* search highlight */
+  --surface-2: #f1f3f4; /* sunken wells (Google grey) */
+  --foreground: #202124; /* ink */
+  --muted: #5f6368; /* secondary text */
+  --muted-2: #80868b; /* faint meta */
+  --border: #e8eaed; /* hairline */
+  --border-strong: #dadce0;
+  --primary: #202124; /* ink buttons */
+  --primary-fg: #ffffff;
+  --accent: #1a73e8; /* Google blue */
+  --accent-soft: rgba(26, 115, 232, 0.08);
+  --ring: #1a73e8;
+  --highlight: rgba(26, 115, 232, 0.14); /* search highlight */
 }
 
 @theme inline {

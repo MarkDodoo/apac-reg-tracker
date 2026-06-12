@@ -158,35 +158,15 @@ export function SearchExplorer({
 
   return (
     <section className="w-full">
-      <div className="-mx-1 mb-4 flex gap-1 overflow-x-auto pb-1 thin-scroll">
-        {TABS.map((t) => {
-          const active = t.id === tab;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => selectTab(t.id)}
-              className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                active
-                  ? "bg-primary text-primary-fg"
-                  : "border border-border text-muted hover:border-border-strong hover:text-foreground"
-              }`}
-            >
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
-
       <div className="relative">
-        <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-2" />
+        <SearchIcon className="pointer-events-none absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-2" />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={PLACEHOLDERS[tab]}
           autoComplete="off"
           spellCheck={false}
-          className="h-14 w-full rounded-xl border border-border-strong bg-surface pl-12 pr-12 text-base text-foreground shadow-sm outline-none transition-shadow placeholder:text-muted-2 focus:border-ring focus:ring-4 focus:ring-ring/15"
+          className="h-14 w-full rounded-full border border-border bg-surface pl-13 pr-13 text-base text-foreground shadow-[0_1px_6px_rgba(32,33,36,0.12)] outline-none transition-shadow placeholder:text-muted-2 hover:shadow-[0_2px_10px_rgba(32,33,36,0.16)] focus:border-ring/40 focus:shadow-[0_2px_12px_rgba(26,115,232,0.2)]"
         />
         {loading && (
           <Spinner className="absolute right-11 top-1/2 h-5 w-5 -translate-y-1/2 text-accent" />
@@ -196,19 +176,41 @@ export function SearchExplorer({
             type="button"
             onClick={() => setQ("")}
             aria-label="Clear search"
-            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-2 transition-colors hover:bg-surface-2 hover:text-foreground"
+            className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-muted-2 transition-colors hover:bg-surface-2 hover:text-foreground"
           >
             <XIcon className="h-4 w-4" />
           </button>
         )}
       </div>
 
-      <FilterRow
-        tab={tab}
-        courts={courts}
-        filters={filters}
-        onChange={(patch) => setFilters((f) => ({ ...f, ...patch }))}
-      />
+      <div className="mt-4 flex flex-wrap justify-center gap-1.5">
+        {TABS.map((t) => {
+          const active = t.id === tab;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => selectTab(t.id)}
+              className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm transition-colors ${
+                active
+                  ? "bg-accent-soft font-medium text-accent"
+                  : "text-muted hover:bg-surface-2 hover:text-foreground"
+              }`}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {hasQuery && (
+        <FilterRow
+          tab={tab}
+          courts={courts}
+          filters={filters}
+          onChange={(patch) => setFilters((f) => ({ ...f, ...patch }))}
+        />
+      )}
 
       <div className="mt-5">
         {!hasQuery && <Hint />}
@@ -354,7 +356,7 @@ function ResultCard({
   const meta = cardMeta(tab, hit);
 
   const inner = (
-    <article className="group rounded-xl border border-border bg-surface p-5 transition-all hover:border-border-strong hover:shadow-md">
+    <article className="group rounded-2xl border border-border bg-surface p-5 transition-all hover:border-border-strong hover:shadow-md">
       <div className="mb-1.5 flex items-start justify-between gap-4">
         <h3 className="font-serif text-lg font-medium leading-snug tracking-tight text-foreground transition-colors group-hover:text-accent">
           {title}
@@ -458,16 +460,10 @@ function cardMeta(tab: TabId, hit: SearchHit): MetaItem[] {
 
 function Hint() {
   return (
-    <div className="rounded-xl border border-dashed border-border-strong bg-surface/60 p-8 text-center">
-      <p className="text-sm text-muted">
-        Type at least two characters to search. Keywords are matched with AND —
-        e.g.{" "}
-        <span className="font-medium text-foreground">
-          negligence duty care
-        </span>{" "}
-        finds documents containing all three.
-      </p>
-    </div>
+    <p className="px-6 pt-3 text-center text-sm leading-relaxed text-muted-2">
+      Try <span className="font-medium text-muted">negligence duty care</span> —
+      keywords are matched with AND.
+    </p>
   );
 }
 
