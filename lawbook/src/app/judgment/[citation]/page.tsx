@@ -39,10 +39,10 @@ export async function generateMetadata({
       { cache: "no-store" },
     );
     return {
-      title: `${(j.title as string) || j.neutral_cite || decoded} — sgjudge`,
+      title: `${(j.title as string) || j.neutral_cite || decoded} — Lawbook`,
     };
   } catch {
-    return { title: `${decoded} — sgjudge` };
+    return { title: `${decoded} — Lawbook` };
   }
 }
 
@@ -85,7 +85,7 @@ export default async function JudgmentPage({
             <span className="text-muted-2">· {j.decision_date}</span>
           )}
         </div>
-        <h1 className="text-2xl font-semibold leading-tight tracking-tight text-foreground sm:text-3xl">
+        <h1 className="font-serif text-2xl font-medium leading-tight tracking-tight text-foreground sm:text-3xl">
           {(j.title as string) || j.neutral_cite || decoded}
         </h1>
 

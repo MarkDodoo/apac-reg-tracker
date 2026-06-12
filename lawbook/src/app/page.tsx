@@ -4,10 +4,12 @@ import { type StatsResponse, sgjudge } from "@/lib/sgjudge";
 const CORPUS_LABELS: Record<string, string> = {
   judgments: "Judgments",
   statutes: "Statutes",
-  subsidiary_legislation: "Subsidiary",
-  hansard: "Hansard",
+  statute_sections: "Statute Sections",
+  subsidiary_legislation: "Subsidiary Leg.",
+  hansard_speeches: "Hansard Speeches",
   bills: "Bills",
-  practice_directions: "Practice Dir.",
+  practice_directions: "Practice Directions",
+  commentary: "Commentary",
 };
 
 async function getStats(): Promise<StatsResponse | null> {
@@ -43,9 +45,9 @@ export default async function Home({
             <span className="h-1.5 w-1.5 rounded-full bg-accent" />
             Public · read-only · Singapore legal corpus
           </span>
-          <h1 className="text-balance text-4xl font-semibold leading-[1.05] tracking-tight text-foreground sm:text-6xl">
+          <h1 className="text-balance font-serif text-4xl font-medium leading-[1.08] tracking-tight text-foreground sm:text-6xl">
             Research Singapore law,{" "}
-            <span className="text-accent">in one search.</span>
+            <span className="text-accent italic">in one search.</span>
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-pretty text-base leading-relaxed text-muted sm:text-lg">
             Full-text search across judgments, statutes, subsidiary legislation,
@@ -65,7 +67,7 @@ export default async function Home({
           <h2 className="mb-6 text-center text-xs font-semibold uppercase tracking-[0.18em] text-muted-2">
             Corpus at a glance
           </h2>
-          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {countEntries.map(([key, n]) => (
               <div
                 key={key}

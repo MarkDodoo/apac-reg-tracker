@@ -26,9 +26,9 @@ export async function generateMetadata({
   const decoded = decodeURIComponent(reference);
   try {
     const s = await sgjudge.getStatute(decoded, {}, { cache: "no-store" });
-    return { title: `${s.short_title || decoded} — sgjudge` };
+    return { title: `${s.short_title || decoded} — Lawbook` };
   } catch {
-    return { title: `${decoded} — sgjudge` };
+    return { title: `${decoded} — Lawbook` };
   }
 }
 
@@ -62,7 +62,7 @@ export default async function StatutePage({
             <span className="text-muted-2">· {s.year_enacted}</span>
           )}
         </div>
-        <h1 className="text-2xl font-semibold leading-tight tracking-tight text-foreground sm:text-3xl">
+        <h1 className="font-serif text-2xl font-medium leading-tight tracking-tight text-foreground sm:text-3xl">
           {s.short_title || s.act_id || decoded}
         </h1>
 

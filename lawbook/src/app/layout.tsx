@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { EB_Garamond, Geist_Mono, Inter } from "next/font/google";
+import { Geist_Mono, Inter, Lora } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
 
@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const ebGaramond = EB_Garamond({
+const lora = Lora({
   variable: "--font-serif",
   subsets: ["latin"],
   display: "swap",
@@ -33,7 +33,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${geistMono.variable} ${ebGaramond.variable} h-full antialiased`}
+      className={`${inter.variable} ${geistMono.variable} ${lora.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <SiteHeader />
@@ -98,8 +98,7 @@ function BrandMark({ className }: { className?: string }) {
       className={className}
       viewBox="0 0 96 96"
       fill="none"
-      role="img"
-      aria-label="Lawbook"
+      aria-hidden="true"
     >
       <rect x="10" y="10" width="76" height="76" rx="18" fill="#18181B" />
       <path

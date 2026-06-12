@@ -356,7 +356,7 @@ function ResultCard({
   const inner = (
     <article className="group rounded-xl border border-border bg-surface p-5 transition-all hover:border-border-strong hover:shadow-md">
       <div className="mb-1.5 flex items-start justify-between gap-4">
-        <h3 className="text-lg font-semibold leading-snug tracking-tight text-foreground transition-colors group-hover:text-accent">
+        <h3 className="font-serif text-lg font-medium leading-snug tracking-tight text-foreground transition-colors group-hover:text-accent">
           {title}
         </h3>
         <div className="shrink-0 pt-1">
@@ -378,7 +378,7 @@ function ResultCard({
   );
 
   return href ? (
-    <Link href={href} className="block">
+    <Link href={href} aria-label={title} className="block">
       {inner}
     </Link>
   ) : (
