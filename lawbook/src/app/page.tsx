@@ -42,7 +42,7 @@ export default async function Home({
       <section className="pt-20 pb-10 sm:pt-32">
         <div className="mx-auto max-w-2xl text-center">
           <h1 className="font-serif text-5xl font-medium tracking-tight text-foreground sm:text-7xl">
-            Lawbook<span className="text-accent">.</span>
+            Lawplain<span className="text-accent">.</span>
           </h1>
           <p className="mt-3 text-sm font-semibold tracking-tight text-muted sm:text-base">
             Search Singapore judgments, statutes, Hansard &amp; more

@@ -26,9 +26,9 @@ export async function generateMetadata({
   const decoded = decodeURIComponent(reference);
   try {
     const s = await sgjudge.getStatute(decoded, {}, { cache: "no-store" });
-    return { title: `${s.short_title || decoded} — Lawbook` };
+    return { title: `${s.short_title || decoded} — Lawplain` };
   } catch {
-    return { title: `${decoded} — Lawbook` };
+    return { title: `${decoded} — Lawplain` };
   }
 }
 

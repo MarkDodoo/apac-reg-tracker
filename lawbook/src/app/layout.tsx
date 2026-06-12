@@ -19,9 +19,9 @@ const lora = Lora({
 });
 
 export const metadata: Metadata = {
-  title: "Lawbook — Singapore Legal Research",
+  title: "Lawplain — Singapore Legal Research",
   description:
-    "Search Singapore judgments, statutes, subsidiary legislation, Hansard, bills and practice directions across the Lawbook legal corpus.",
+    "Search Singapore judgments, statutes, subsidiary legislation, Hansard, bills and practice directions across the Lawplain legal corpus.",
 };
 
 export default function RootLayout({
@@ -49,7 +49,7 @@ function SiteFooter() {
         <p className="flex items-center gap-2.5">
           <BrandMark className="h-6 w-6" />
           <span>
-            <span className="font-semibold text-foreground">Lawbook</span> — a
+            <span className="font-semibold text-foreground">Lawplain</span> — a
             read-only projection of the Singapore legal corpus.
           </span>
         </p>

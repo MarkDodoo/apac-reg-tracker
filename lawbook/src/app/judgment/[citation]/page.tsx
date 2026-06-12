@@ -39,10 +39,10 @@ export async function generateMetadata({
       { cache: "no-store" },
     );
     return {
-      title: `${(j.title as string) || j.neutral_cite || decoded} — Lawbook`,
+      title: `${(j.title as string) || j.neutral_cite || decoded} — Lawplain`,
     };
   } catch {
-    return { title: `${decoded} — Lawbook` };
+    return { title: `${decoded} — Lawplain` };
   }
 }
 
