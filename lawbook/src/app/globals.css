@@ -8,6 +8,7 @@
  * text. Generous whitespace, shadcn-style restraint.
  */
 :root {
+  color-scheme: light; /* always light, like Mike */
   --background: #fafafa; /* near-white */
   --surface: #ffffff; /* cards */
   --surface-2: #f4f4f5; /* sunken wells */
@@ -42,25 +43,6 @@
   --font-sans: var(--font-inter);
   --font-mono: var(--font-geist-mono);
   --font-serif: var(--font-serif);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #141414; /* near-black */
-    --surface: #1f1f22;
-    --surface-2: #28282c;
-    --foreground: #fafafa;
-    --muted: #a1a1aa;
-    --muted-2: #71717a;
-    --border: rgba(255, 255, 255, 0.1);
-    --border-strong: rgba(255, 255, 255, 0.2);
-    --primary: #e4e4e7; /* inverted ink buttons */
-    --primary-fg: #212124;
-    --accent: #4da3ff; /* azure, lifted for dark contrast */
-    --accent-soft: rgba(0, 136, 255, 0.18);
-    --ring: #4da3ff;
-    --highlight: rgba(0, 136, 255, 0.28);
-  }
 }
 
 * {
