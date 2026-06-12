@@ -44,7 +44,7 @@ export default async function Home({
           <h1 className="font-serif text-5xl font-medium tracking-tight text-foreground sm:text-7xl">
             Lawbook<span className="text-accent">.</span>
           </h1>
-          <p className="mt-3 text-sm text-muted sm:text-base">
+          <p className="mt-3 text-sm font-semibold tracking-tight text-muted sm:text-base">
             Search Singapore judgments, statutes, Hansard &amp; more
           </p>
         </div>

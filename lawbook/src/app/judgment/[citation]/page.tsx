@@ -97,14 +97,14 @@ export default async function JudgmentPage({
         )}
 
         {catchwords.length > 0 && (
-          <div className="mt-4 flex flex-wrap gap-1.5">
+          <div className="mt-4 flex flex-col gap-1.5 border-l-2 border-border-strong pl-4">
             {catchwords.map((c) => (
-              <span
+              <p
                 key={c}
-                className="rounded-full border border-border bg-surface-2 px-2.5 py-1 text-xs text-muted"
+                className="font-serif text-sm italic leading-relaxed text-muted"
               >
-                {c}
-              </span>
+                {c.replace(/^\[|\]$/g, "")}
+              </p>
             ))}
           </div>
         )}

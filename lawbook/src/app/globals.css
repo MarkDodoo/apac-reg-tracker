@@ -2,26 +2,27 @@
 @import "tailwindcss";
 
 /*
- * Design system — "Clean Legal Search" (Google-calm, light only).
- * Pure white canvas, Google-grey neutrals, a single blue accent, and very
- * rounded pill geometry. Inter for UI; Lora for editorial/legal text.
+ * Design system — "Counsel Blue" (light only).
+ * Pure white canvas, navy-cast neutrals, one bright cobalt accent, pill
+ * geometry. Google Sans Flex for UI (semi-black weights for emphasis);
+ * Lora for editorial/legal text.
  */
 :root {
   color-scheme: light; /* always light */
   --background: #ffffff; /* pure white canvas */
   --surface: #ffffff; /* cards */
-  --surface-2: #f1f3f4; /* sunken wells (Google grey) */
-  --foreground: #202124; /* ink */
-  --muted: #5f6368; /* secondary text */
-  --muted-2: #80868b; /* faint meta */
-  --border: #e8eaed; /* hairline */
-  --border-strong: #dadce0;
-  --primary: #202124; /* ink buttons */
+  --surface-2: #eef1f8; /* sunken wells, navy-tinted */
+  --foreground: #161a26; /* semi-black ink with a navy cast */
+  --muted: #4a5264; /* secondary text */
+  --muted-2: #7a8194; /* faint meta */
+  --border: #e5e8f0; /* hairline */
+  --border-strong: #d4d9e6;
+  --primary: #161a26; /* ink buttons */
   --primary-fg: #ffffff;
-  --accent: #1a73e8; /* Google blue */
-  --accent-soft: rgba(26, 115, 232, 0.08);
-  --ring: #1a73e8;
-  --highlight: rgba(26, 115, 232, 0.14); /* search highlight */
+  --accent: #2257e7; /* bright cobalt (AA on white) */
+  --accent-soft: rgba(41, 98, 255, 0.09);
+  --ring: #2962ff;
+  --highlight: rgba(41, 98, 255, 0.16); /* search highlight */
 }
 
 @theme inline {
@@ -39,7 +40,7 @@
   --color-accent-soft: var(--accent-soft);
   --color-ring: var(--ring);
   --color-highlight: var(--highlight);
-  --font-sans: var(--font-inter);
+  --font-sans: var(--font-google-sans);
   --font-mono: var(--font-geist-mono);
   --font-serif: var(--font-serif);
 }

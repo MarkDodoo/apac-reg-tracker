@@ -7,7 +7,6 @@ import { ScoreBar } from "@/components/ScoreBar";
 import { Snippet } from "@/components/Snippet";
 import {
   ApiError,
-  relevanceFraction,
   type SearchHit,
   type SearchResponse,
   sgjudge,
@@ -150,9 +149,9 @@ export function SearchExplorer({
     };
   }, [q, tab, filters]);
 
-  const scores = useMemo(
-    () => (data?.results ?? []).map((r) => r.score),
-    [data],
+  const ranked = useMemo(
+    () => rerankResults(tab, data?.results ?? [], data?.query ?? ""),
+    [tab, data],
   );
   const hasQuery = q.trim().length >= MIN_CHARS;
 
@@ -166,7 +165,7 @@ export function SearchExplorer({
           placeholder={PLACEHOLDERS[tab]}
           autoComplete="off"
           spellCheck={false}
-          className="h-14 w-full rounded-full border border-border bg-surface pl-13 pr-13 text-base text-foreground shadow-[0_1px_6px_rgba(32,33,36,0.12)] outline-none transition-shadow placeholder:text-muted-2 hover:shadow-[0_2px_10px_rgba(32,33,36,0.16)] focus:border-ring/40 focus:shadow-[0_2px_12px_rgba(26,115,232,0.2)]"
+          className="h-14 w-full rounded-full border border-border bg-surface pl-13 pr-13 text-base text-foreground shadow-[0_1px_6px_rgba(32,33,36,0.12)] outline-none transition-shadow placeholder:text-muted-2 hover:shadow-[0_2px_10px_rgba(22,26,38,0.14)] focus:border-ring/40 focus:shadow-[0_2px_12px_rgba(41,98,255,0.22)]"
         />
         {loading && (
           <Spinner className="absolute right-11 top-1/2 h-5 w-5 -translate-y-1/2 text-accent" />
@@ -222,8 +221,11 @@ export function SearchExplorer({
         {hasQuery && !error && data && (
           <>
             <p className="mb-3 text-xs text-muted-2">
-              {data.count} result{data.count === 1 ? "" : "s"} for{" "}
-              <span className="font-medium text-muted">
+              {data.count >= 20
+                ? "Top 20 results"
+                : `${data.count} result${data.count === 1 ? "" : "s"}`}{" "}
+              for{" "}
+              <span className="font-semibold text-muted">
                 &ldquo;{data.query}&rdquo;
               </span>
             </p>
@@ -233,13 +235,17 @@ export function SearchExplorer({
               </div>
             ) : (
               <ul className="flex flex-col gap-3">
-                {data.results.map((r, i) => (
-                  <li key={(r.citation as string) ?? (r.act_id as string) ?? i}>
+                {ranked.map(({ hit, relevance }, i) => (
+                  <li
+                    key={
+                      (hit.citation as string) ?? (hit.act_id as string) ?? i
+                    }
+                  >
                     <ResultCard
                       tab={tab}
-                      hit={r}
+                      hit={hit}
                       query={data.query}
-                      fraction={relevanceFraction(r.score, scores)}
+                      fraction={relevance}
                     />
                   </li>
                 ))}
@@ -358,7 +364,11 @@ function ResultCard({
   const inner = (
     <article className="group rounded-2xl border border-border bg-surface p-5 transition-all hover:border-border-strong hover:shadow-md">
       <div className="mb-1.5 flex items-start justify-between gap-4">
-        <h3 className="font-serif text-lg font-medium leading-snug tracking-tight text-foreground transition-colors group-hover:text-accent">
+        <h3
+          className={`font-serif text-lg font-medium leading-snug tracking-tight text-foreground ${
+            href ? "transition-colors group-hover:text-accent" : ""
+          }`}
+        >
           {title}
         </h3>
         <div className="shrink-0 pt-1">
@@ -456,6 +466,47 @@ function cardMeta(tab: TabId, hit: SearchHit): MetaItem[] {
     if (hit.status) text("status", hit.status);
   }
   return out;
+}
+
+/**
+ * Client-side rerank: the backend's BM25 score alone can rank a body-only
+ * match at 100% (e.g. "unlawful assembly" → Building Control Act). Blend it
+ * with how many query terms appear in the title and snippet so weak matches
+ * read as weak.
+ */
+function rerankResults(
+  tab: TabId,
+  results: SearchHit[],
+  query: string,
+): { hit: SearchHit; relevance: number }[] {
+  if (results.length === 0) return [];
+  const terms = Array.from(
+    new Set(
+      query
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((t) => t.length >= 2),
+    ),
+  );
+  const raw = results.map((r) => r.score);
+  const max = Math.max(...raw);
+  const min = Math.min(...raw);
+  const span = max - min;
+  const scored = results.map((hit) => {
+    const backend = span > 0 ? (hit.score - min) / span : 0.5;
+    const title = cardTitle(tab, hit).toLowerCase();
+    const snippet = (hit.snippet ?? "").replace(/<[^>]+>/g, "").toLowerCase();
+    const titleCover = terms.length
+      ? terms.filter((t) => title.includes(t)).length / terms.length
+      : 0;
+    const snippetCover = terms.length
+      ? terms.filter((t) => snippet.includes(t)).length / terms.length
+      : 0;
+    const relevance = 0.45 * backend + 0.4 * titleCover + 0.15 * snippetCover;
+    return { hit, relevance };
+  });
+  scored.sort((a, b) => b.relevance - a.relevance);
+  return scored;
 }
 
 function Hint() {
