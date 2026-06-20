@@ -34,3 +34,77 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Ask Lawplain — agentic natural-language search
+
+The home page has an **Ask Lawplain** box that answers natural-language
+questions about the corpus (e.g. *"What must a plaintiff prove in a defamation
+claim?"*). It does **not** call a hosted LLM API directly — it drives a local
+[`graff`](https://github.com/justrach/codegraff) coding agent via
+[`@codegraff/sdk`](https://www.npmjs.com/package/@codegraff/sdk). The agent is
+given the `sgjudge` REST endpoints as its tool surface and runs `curl` against
+`backend.lawplain.com` itself, iterating over searches and detail fetches, then
+writes a cited answer that streams back to the page.
+
+Flow:
+
+```
+browser ─POST {question}─▶ /api/ask (Node runtime)
+                              │  runAgent({ yolo, systemPrompt, cwd: <tmp> })
+                              ▼
+                          graff --json  ──bash+curl──▶  backend.lawplain.com
+                              │  streams Event{ text | tool_call | turn }
+                              ▼
+                  Server-Sent Events ─▶ AskAgent.tsx (streaming markdown)
+```
+
+Files: `src/lib/agent.ts` (system prompt + `runAgent` wrapper),
+`src/app/api/ask/route.ts` (SSE route, Node runtime),
+`src/components/AskAgent.tsx` (client UI).
+
+### Agent setup
+
+The route handler spawns the `graff` binary as a subprocess, so:
+
+1. **Install `graff`** (one line, macOS/Linux):
+   ```bash
+   curl -fsSL https://github.com/justrach/codegraff/releases/latest/download/install.sh | sh
+   ```
+2. **Give it a model key.** Any provider graff supports works — pick one and
+   set its key:
+   ```bash
+   graff key set kimi sk-...          # or: export KIMI_API_KEY=sk-...
+   graff key set deepseek sk-...      # or: export DEEPSEEK_API_KEY=sk-...
+   graff key set openai sk-...        # or: export OPENAI_API_KEY=sk-...
+   ```
+   (`graff login` / `graff login codex` also work for the free codegraff key
+   or a ChatGPT subscription.)
+3. **Pick the model** (optional). Defaults to `kimi-k2.7`; override with:
+   ```bash
+   export LAWPLAIN_AGENT_MODEL=claude-sonnet-4-6   # any graff-supported model
+   ```
+   Binary not on PATH? `export LAWGRAFF_BINARY=/path/to/graff`.
+
+Then `npm run dev` and use the **Ask Lawplain** box. With no key configured the
+route returns an `error` event explaining the model is unavailable.
+
+### Notes & caveats
+
+- **`yolo: true` is required** — without it the agent's `bash` (the `curl`
+  calls) is blocked at the permission gate, since the JSON protocol has no human
+  to approve. The agent runs in an **isolated temp cwd** so it cannot touch the
+  project source, and `GRAFF_NO_TELEMETRY=1` keeps the SDK's outbound fleet
+  telemetry off. Treat the yolo bash surface as you would any server-side code
+  execution: don't expose `/api/ask` unauthenticated on a public host without
+  rate-limiting and your own review of the system prompt in `src/lib/agent.ts`.
+- **Latency.** A turn is several LLM round trips plus `curl`s, so it's slower
+  than the keyword search above it — expect ~20–60s. The UI streams text and
+  shows each search as a chip while it works.
+- **Serverless.** This needs the Node runtime (it spawns a subprocess), so it
+  won't run on Vercel Edge. For edge/serverless without the binary, run
+  `graff serve` somewhere and swap `runAgent` for the SDK's
+  `runAgentRemote`/`RemoteHarness` (from `@codegraff/sdk/remote`) in
+  `src/lib/agent.ts`.
+- The agent is instructed to cite and to **not fabricate** citations or section
+  numbers; if the corpus lacks the answer it says so. Still: legal information,
+  not legal advice.

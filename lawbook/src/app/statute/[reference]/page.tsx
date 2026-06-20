@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeftIcon, ExternalLinkIcon } from "@/components/icons";
+import {
+  ArrowLeftIcon,
+  ExternalLinkIcon,
+  SparkleIcon,
+} from "@/components/icons";
 import { ApiError, type StatuteDetail, sgjudge } from "@/lib/sgjudge";
 
 async function load(reference: string): Promise<StatuteDetail> {
@@ -77,6 +81,14 @@ export default async function StatutePage({
             View official text on Singapore Statutes Online
           </a>
         )}
+
+        <Link
+          href={`/ask?cite=${encodeURIComponent(decoded)}&kind=statute`}
+          className="mt-5 inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent-soft px-3.5 py-2 text-sm font-medium text-accent transition-colors hover:border-accent hover:bg-accent hover:text-primary-fg"
+        >
+          <SparkleIcon className="h-4 w-4" />
+          Ask Lawplain about this
+        </Link>
       </header>
 
       {sections.length > 1 && (

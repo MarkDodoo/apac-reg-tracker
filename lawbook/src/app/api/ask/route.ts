@@ -1,0 +1,96 @@
+/**
+ * POST /api/ask  — streams an agent turn as Server-Sent Events.
+ *
+ * Body: { "question": string, "cite"?: string, "kind"?: "judgment"|"statute" }
+ * Response: text/event-stream of `data: {json}\n\n` lines, each an AgentEvent:
+ *   {type:"delta",text} | {type:"tool",name,summary} | {type:"done",...} | {type:"error",message}
+ *
+ * Runs the `graff` binary (Node runtime only — it spawns a subprocess).
+ *
+ * Security: the client may NOT supply document text directly (that would let a
+ * caller inject arbitrary prompt content into a yolo-bash agent). Context is
+ * re-resolved server-side from `cite`+`kind` via the sgjudge API, so only real
+ * corpus documents can ground the turn.
+ */
+import { type AgentEvent, askLegalAgent, type ChatContext } from "@/lib/agent";
+import { loadChatContext } from "@/lib/ask-context";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+// Agent turns can take a while (multiple LLM round trips + curl).
+export const maxDuration = 300;
+
+function sse(event: AgentEvent): string {
+  return `data: ${JSON.stringify(event)}\n\n`;
+}
+
+export async function POST(req: Request): Promise<Response> {
+  let question = "";
+  let cite: string | undefined;
+  let kind: string | undefined;
+  try {
+    const body = await req.json();
+    question = typeof body?.question === "string" ? body.question.trim() : "";
+    cite = typeof body?.cite === "string" ? body.cite : undefined;
+    kind = typeof body?.kind === "string" ? body.kind : undefined;
+  } catch {
+    return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+      status: 400,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  if (!question) {
+    return new Response(JSON.stringify({ error: "Missing 'question' field" }), {
+      status: 400,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  // Re-resolve context server-side — never trust client-supplied document text.
+  let context: ChatContext | undefined;
+  if (cite && (kind === "judgment" || kind === "statute")) {
+    const params = new URLSearchParams({ cite, kind });
+    context = (await loadChatContext(params)) ?? undefined;
+  }
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const safeEnqueue = (e: AgentEvent) => {
+        try {
+          controller.enqueue(encoder.encode(sse(e)));
+        } catch {
+          /* controller already closed */
+        }
+      };
+
+      try {
+        for await (const ev of askLegalAgent(question, req.signal, context)) {
+          safeEnqueue(ev);
+          if (ev.type === "error") break;
+        }
+      } catch (err) {
+        safeEnqueue({
+          type: "error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
+        }
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      "x-content-type-options": "nosniff",
+    },
+  });
+}

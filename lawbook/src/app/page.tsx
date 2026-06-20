@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { SparkleIcon } from "@/components/icons";
 import { SearchExplorer } from "@/components/SearchExplorer";
 import { type StatsResponse, sgjudge } from "@/lib/sgjudge";
 
@@ -57,6 +59,29 @@ export default async function Home({
           initialTab={tab ?? "judgments"}
           initialQuery={q ?? ""}
         />
+      </section>
+
+      {/* Agent — compact CTA to the dedicated /ask page */}
+      <section className="mx-auto max-w-2xl pb-6">
+        <Link
+          href="/ask"
+          className="group flex items-center gap-3.5 rounded-2xl border border-border bg-surface px-4 py-3.5 shadow-sm transition-colors hover:border-border-strong hover:bg-surface-2"
+        >
+          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent transition-colors group-hover:bg-accent group-hover:text-primary-fg">
+            <SparkleIcon className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-foreground">
+              Ask Lawplain
+            </span>
+            <span className="block text-xs text-muted-2">
+              Natural-language research — an agent searches the corpus for you.
+            </span>
+          </span>
+          <span className="shrink-0 text-sm font-medium text-accent">
+            Ask →
+          </span>
+        </Link>
       </section>
 
       {/* One quiet stats line, Google-footer style */}

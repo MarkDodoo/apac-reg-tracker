@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# codegraff / harness agent artifacts (session data, traces — never commit)
+harness.trace.jsonl
+harness.trajectory.jsonl
+last.session.json
+
+# npm lockfile (this repo uses bun.lock)
+package-lock.json

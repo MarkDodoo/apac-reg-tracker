@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeftIcon, ExternalLinkIcon } from "@/components/icons";
+import {
+  ArrowLeftIcon,
+  ExternalLinkIcon,
+  SparkleIcon,
+} from "@/components/icons";
 import { JudgmentBody } from "@/components/JudgmentBody";
 import {
   ApiError,
@@ -152,6 +156,14 @@ export default async function JudgmentPage({
             View official judgment on eLitigation
           </a>
         )}
+
+        <Link
+          href={`/ask?cite=${encodeURIComponent(decoded)}&kind=judgment`}
+          className="mt-5 inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent-soft px-3.5 py-2 text-sm font-medium text-accent transition-colors hover:border-accent hover:bg-accent hover:text-primary-fg"
+        >
+          <SparkleIcon className="h-4 w-4" />
+          Ask Lawplain about this
+        </Link>
       </header>
 
       <section className="mt-8">
