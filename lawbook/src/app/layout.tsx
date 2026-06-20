@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Google_Sans_Flex, Lora } from "next/font/google";
+import { SiteHeader } from "@/components/SiteHeader";
 import "./globals.css";
 
 const googleSans = Google_Sans_Flex({
@@ -35,6 +36,7 @@ export default function RootLayout({
       className={`${googleSans.variable} ${geistMono.variable} ${lora.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
+        <SiteHeader />
         <div className="flex-1">{children}</div>
         <SiteFooter />
       </body>
@@ -81,24 +83,24 @@ function BrandMark({ className }: { className?: string }) {
       />
       <path
         d="M48 45.5V69"
-        stroke="#0088FF"
+        stroke="#0d7561"
         strokeWidth={3.5}
         strokeLinecap="round"
       />
       <path
         d="M33 31H63"
-        stroke="#0088FF"
+        stroke="#0d7561"
         strokeWidth={4}
         strokeLinecap="round"
       />
       <path
         d="M48 26V36"
-        stroke="#0088FF"
+        stroke="#0d7561"
         strokeWidth={4}
         strokeLinecap="round"
       />
-      <circle cx="33" cy="31" r="2.8" fill="#0088FF" />
-      <circle cx="63" cy="31" r="2.8" fill="#0088FF" />
+      <circle cx="33" cy="31" r="2.8" fill="#0d7561" />
+      <circle cx="63" cy="31" r="2.8" fill="#0d7561" />
       <path
         d="M32 49H40"
         stroke="#18181B"
