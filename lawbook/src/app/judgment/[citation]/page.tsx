@@ -134,14 +134,22 @@ export default async function JudgmentPage({
 
         {catchwords.length > 0 && (
           <div className="mt-4 flex flex-col gap-1.5 border-l-2 border-border-strong pl-4">
-            {catchwords.map((c) => (
-              <p
-                key={c}
-                className="font-serif text-sm italic leading-relaxed text-muted"
-              >
-                {c.replace(/^\[|\]$/g, "")}
-              </p>
-            ))}
+            {catchwords.map((c) => {
+              const label = c.replace(/^\[|\]$/g, "");
+
+              return (
+                <Link
+                  key={c}
+                  href={{
+                    pathname: "/",
+                    query: { tab: "judgments", q: label },
+                  }}
+                  className="font-serif text-sm italic leading-relaxed text-muted transition-colors hover:text-accent"
+                >
+                  {label}
+                </Link>
+              );
+            })}
           </div>
         )}
 
