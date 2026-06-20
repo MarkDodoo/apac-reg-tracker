@@ -5,8 +5,18 @@ import { usePathname } from "next/navigation";
 import { SearchIcon, SparkleIcon } from "@/components/icons";
 
 const TABS = [
-  { href: "/", label: "Search", icon: SearchIcon, match: (p: string) => p === "/" },
-  { href: "/ask", label: "Ask Lawplain", icon: SparkleIcon, match: (p: string) => p.startsWith("/ask") },
+  {
+    href: "/",
+    label: "Search",
+    icon: SearchIcon,
+    match: (p: string) => p === "/",
+  },
+  {
+    href: "/ask",
+    label: "Ask Lawplain",
+    icon: SparkleIcon,
+    match: (p: string) => p.startsWith("/ask"),
+  },
 ];
 
 export function SiteHeader() {

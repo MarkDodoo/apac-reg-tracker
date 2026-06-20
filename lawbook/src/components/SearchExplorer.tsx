@@ -269,12 +269,12 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <label className={`flex flex-col gap-1 ${className ?? ""}`}>
+    <div className={`flex flex-col gap-1 ${className ?? ""}`}>
       <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-2">
         {label}
       </span>
       {children}
-    </label>
+    </div>
   );
 }
 
