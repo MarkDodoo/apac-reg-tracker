@@ -2,8 +2,8 @@
 @import "tailwindcss";
 
 /*
- * Design system — "Counsel Blue" (light only).
- * Pure white canvas, navy-cast neutrals, one bright cobalt accent, pill
+ * Design system — "Counsel Emerald" (light only).
+ * Pure white canvas, navy-cast neutrals, one deep emerald accent, pill
  * geometry. Google Sans Flex for UI (semi-black weights for emphasis);
  * Lora for editorial/legal text.
  */
@@ -19,10 +19,10 @@
   --border-strong: #d4d9e6;
   --primary: #161a26; /* ink buttons */
   --primary-fg: #ffffff;
-  --accent: #2257e7; /* bright cobalt (AA on white) */
-  --accent-soft: rgba(41, 98, 255, 0.09);
-  --ring: #2962ff;
-  --highlight: rgba(41, 98, 255, 0.16); /* search highlight */
+  --accent: #0d7561; /* deep emerald (AA on white) */
+  --accent-soft: rgba(13, 117, 97, 0.09);
+  --ring: #0d7561;
+  --highlight: rgba(13, 117, 97, 0.16); /* search highlight */
 }
 
 @theme inline {
