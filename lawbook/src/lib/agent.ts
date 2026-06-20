@@ -16,6 +16,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Event, runAgent } from "@codegraff/sdk";
+import {
+  createSandbox,
+  deleteSandbox,
+  GRAFF_BIN_PATH,
+  installGraff,
+  streamProcess,
+} from "@/lib/cubesandbox";
 import { BASE } from "@/lib/sgjudge";
 
 export const AGENT_MODEL = process.env.LAWPLAIN_AGENT_MODEL ?? "kimi-k2.7";
@@ -272,5 +279,147 @@ export async function* askLegalAgent(
   } finally {
     // Clean up the isolated cwd so a long-running server doesn't leak dirs.
     rmSync(cwd, { recursive: true, force: true });
+  }
+}
+
+// ─── sandboxed execution via CubeSandbox microVMs ───────────────────────
+
+/**
+ * Run one agent turn inside a disposable CubeSandbox microVM.
+ *
+ * Instead of spawning `graff` as a local subprocess (which gives the agent's
+ * yolo-bash tool access to the host), this creates a firewalled firecracker
+ * VM, downloads the graff binary into it, and runs `graff --json -p` inside.
+ * The agent's bash tool can only reach the internet (to curl the sgjudge API)
+ * — it cannot touch the host filesystem or other processes.
+ *
+ * Requires:
+ *   CUBESANDBOX_GATEWAY_URL  — gateway base URL
+ *   CUBESANDBOX_TENANT_KEY   — tenant API key
+ *   KIMI_API_KEY             — model provider key (injected into the VM)
+ *
+ * Yields the same AgentEvent stream as askLegalAgent, so the UI doesn't need
+ * to know which backend is in use.
+ */
+export async function* askLegalAgentSandboxed(
+  question: string,
+  signal?: AbortSignal,
+  context?: ChatContext,
+): AsyncGenerator<AgentEvent> {
+  const gw = process.env.CUBESANDBOX_GATEWAY_URL;
+  const tenantKey = process.env.CUBESANDBOX_TENANT_KEY;
+  const kimiKey = process.env.KIMI_API_KEY;
+
+  if (!gw || !tenantKey) {
+    yield {
+      type: "error",
+      message:
+        "CubeSandbox gateway not configured (CUBESANDBOX_GATEWAY_URL / CUBESANDBOX_TENANT_KEY)",
+    };
+    return;
+  }
+  if (!kimiKey) {
+    yield { type: "error", message: "KIMI_API_KEY not set" };
+    return;
+  }
+
+  let sid: string | null = null;
+  try {
+    // 1. Create microVM
+    yield { type: "tool", name: "sandbox", summary: "Starting sandbox…" };
+    sid = await createSandbox({ cpuCount: 2, memoryMB: 1024 });
+
+    // 2. Download graff into the VM
+    yield { type: "tool", name: "sandbox", summary: "Loading agent…" };
+    await installGraff(sid);
+
+    // 3. Run graff --json inside the VM, piping the prompt via stdin.
+    //    envd doesn't support process stdin, so we use a bash pipe.
+    //    All dynamic values are env vars to avoid shell-escaping issues.
+    const prompt = composePrompt(question, context);
+    const systemPrompt = legalResearchPrompt();
+    const promptJson = JSON.stringify({ type: "user", text: prompt });
+
+    const envs: Record<string, string> = {
+      PROMPT_JSON: promptJson,
+      SYSTEM_PROMPT: systemPrompt,
+      GRAFF_BIN: GRAFF_BIN_PATH,
+      MODEL: AGENT_MODEL,
+      KIMI_API_KEY: kimiKey,
+      HOME: "/home/user",
+      PATH: "/usr/bin:/bin:/usr/local/bin",
+      GRAFF_NO_TELEMETRY: "1",
+    };
+
+    let finalText = "";
+    let costUsd = 0;
+    let contextTokens = 0;
+    let lineBuf = "";
+
+    for await (const chunk of streamProcess(sid, {
+      cmd: "/bin/bash",
+      args: [
+        "-c",
+        'printf \'%s\' "$PROMPT_JSON" | "$GRAFF_BIN" --json --yolo --no-telemetry --model "$MODEL" --system-prompt "$SYSTEM_PROMPT"',
+      ],
+      cwd: "/tmp",
+      envs,
+      timeoutMs: 300_000,
+    })) {
+      if (signal?.aborted) break;
+
+      if (chunk.type !== "stdout") continue;
+
+      // Buffer stdout and emit complete NDJSON lines
+      lineBuf += chunk.data;
+      let nl = lineBuf.indexOf("\n");
+      while (nl >= 0) {
+        const line = lineBuf.slice(0, nl).trim();
+        lineBuf = lineBuf.slice(nl + 1);
+        if (!line) continue;
+
+        let ev: Event;
+        try {
+          ev = JSON.parse(line) as Event;
+        } catch {
+          continue; // skip non-JSON lines (e.g. progress noise)
+        }
+
+        switch (ev.type) {
+          case "text":
+            if (ev.text) yield { type: "delta", text: ev.text };
+            break;
+          case "tool_call":
+            yield {
+              type: "tool",
+              name: ev.name,
+              summary: summarizeTool(ev.name, ev.input),
+            };
+            break;
+          case "turn":
+            finalText = ev.text;
+            costUsd = ev.cost_usd;
+            contextTokens = ev.context_tokens;
+            break;
+          case "error":
+            yield { type: "error", message: ev.message };
+            return;
+          default:
+            break;
+        }
+        nl = lineBuf.indexOf("\n");
+      }
+    }
+
+    if (signal?.aborted) return;
+    yield { type: "done", text: finalText, costUsd, contextTokens };
+  } catch (err) {
+    yield {
+      type: "error",
+      message: err instanceof Error ? err.message : String(err),
+    };
+  } finally {
+    // Always clean up the microVM — never leak sandboxes.
+    if (sid) await deleteSandbox(sid);
   }
 }

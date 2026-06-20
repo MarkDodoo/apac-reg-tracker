@@ -12,13 +12,23 @@
  * re-resolved server-side from `cite`+`kind` via the sgjudge API, so only real
  * corpus documents can ground the turn.
  */
-import { type AgentEvent, askLegalAgent, type ChatContext } from "@/lib/agent";
+import {
+  type AgentEvent,
+  askLegalAgent,
+  askLegalAgentSandboxed,
+  type ChatContext,
+} from "@/lib/agent";
 import { loadChatContext } from "@/lib/ask-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 // Agent turns can take a while (multiple LLM round trips + curl).
 export const maxDuration = 300;
+
+/** Use CubeSandbox when configured; fall back to local graff subprocess. */
+const useSandbox = !!(
+  process.env.CUBESANDBOX_GATEWAY_URL && process.env.CUBESANDBOX_TENANT_KEY
+);
 
 function sse(event: AgentEvent): string {
   return `data: ${JSON.stringify(event)}\n\n`;
@@ -66,7 +76,8 @@ export async function POST(req: Request): Promise<Response> {
       };
 
       try {
-        for await (const ev of askLegalAgent(question, req.signal, context)) {
+        const agent = useSandbox ? askLegalAgentSandboxed : askLegalAgent;
+        for await (const ev of agent(question, req.signal, context)) {
           safeEnqueue(ev);
           if (ev.type === "error") break;
         }
