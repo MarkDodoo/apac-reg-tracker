@@ -276,7 +276,9 @@ export interface AskAgentProps {
 
 export function AskAgent({ initialContext }: AskAgentProps = {}) {
   const pathname = usePathname();
-  const signUpHref = `/sign-up?next=${encodeURIComponent(pathname || "/")}`;
+  const next = encodeURIComponent(pathname || "/");
+  const signInHref = `/sign-in?next=${next}`;
+  const signUpHref = `/sign-up?next=${next}`;
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -588,6 +590,7 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
                   key={m.id}
                   m={m}
                   now={now}
+                  signInHref={signInHref}
                   signUpHref={signUpHref}
                 />
               ),
@@ -642,10 +645,12 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
 function AssistantMessage({
   m,
   now,
+  signInHref,
   signUpHref,
 }: {
   m: Message;
   now: number;
+  signInHref: string;
   signUpHref: string;
 }) {
   const live = !["done", "error", "stopped"].includes(m.phase);
@@ -731,7 +736,14 @@ function AssistantMessage({
         <p className="rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-700">
           {m.error === "Please sign in to use Ask Lawplain." ? (
             <>
-              Please sign in or{" "}
+              Please{" "}
+              <Link
+                href={signInHref}
+                className="font-medium underline decoration-red-700/40 underline-offset-2 hover:decoration-red-700"
+              >
+                sign in
+              </Link>{" "}
+              or{" "}
               <Link
                 href={signUpHref}
                 className="font-medium underline decoration-red-700/40 underline-offset-2 hover:decoration-red-700"
