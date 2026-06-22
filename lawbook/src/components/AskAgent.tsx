@@ -14,6 +14,7 @@ import {
   BookIcon,
   SparkleIcon,
   StopIcon,
+  XIcon,
 } from "@/components/icons";
 import type { ChatContext } from "@/lib/agent";
 
@@ -282,6 +283,7 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pinnedContext, setPinnedContext] = useState(initialContext);
   const [now, setNow] = useState(() => Date.now());
   const abortRef = useRef<AbortController | null>(null);
   const msgId = useRef(0);
@@ -387,8 +389,8 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             question: q,
-            cite: initialContext?.citation,
-            kind: initialContext?.kind,
+            cite: pinnedContext?.citation,
+            kind: pinnedContext?.kind,
           }),
           signal: ac.signal,
         });
@@ -488,7 +490,7 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
         abortRef.current = null;
       }
     },
-    [busy, initialContext],
+    [busy, pinnedContext],
   );
 
   const onSubmit = (e: React.FormEvent) => {
@@ -531,27 +533,38 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
         aria-relevant="additions text"
         className="thin-scroll max-h-[60vh] min-h-[180px] overflow-y-auto px-4 py-4"
       >
-        {initialContext && (
-          <a
-            href={initialContext.href}
-            className="mb-4 flex items-center gap-2.5 rounded-xl border border-border bg-surface-2/60 px-3 py-2 text-left transition-colors hover:border-border-strong hover:bg-surface-2"
-          >
-            <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-background text-muted">
-              <BookIcon className="h-3.5 w-3.5" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[10px] font-semibold uppercase tracking-wide text-muted-2">
-                {initialContext.kind === "judgment" ? "Judgment" : "Statute"} ·
-                pinned
+        {pinnedContext && (
+          <div className="relative mb-4 rounded-xl border border-border bg-surface-2/60 pr-11 transition-colors hover:border-border-strong hover:bg-surface-2">
+            <a
+              href={pinnedContext.href}
+              className="flex min-w-0 items-center gap-2.5 px-3 py-2 text-left"
+            >
+              <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-background text-muted">
+                <BookIcon className="h-3.5 w-3.5" />
               </span>
-              <span className="block truncate text-[13px] font-medium text-foreground">
-                {initialContext.title}
+              <span className="min-w-0 flex-1">
+                <span className="block text-[10px] font-semibold uppercase tracking-wide text-muted-2">
+                  {pinnedContext.kind === "judgment" ? "Judgment" : "Statute"} ·
+                  pinned
+                </span>
+                <span className="block truncate text-[13px] font-medium text-foreground">
+                  {pinnedContext.title}
+                </span>
               </span>
-            </span>
-            <span className="shrink-0 font-mono text-[10px] text-muted-2">
-              {initialContext.citation}
-            </span>
-          </a>
+              <span className="shrink-0 font-mono text-[10px] text-muted-2">
+                {pinnedContext.citation}
+              </span>
+            </a>
+            <button
+              type="button"
+              onClick={() => setPinnedContext(undefined)}
+              className="absolute right-3 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-2 transition-colors hover:bg-border hover:text-foreground"
+              aria-label={`Remove pinned ${pinnedContext.kind}`}
+              title="Remove pinned source"
+            >
+              <XIcon className="h-3.5 w-3.5" />
+            </button>
+          </div>
         )}
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
