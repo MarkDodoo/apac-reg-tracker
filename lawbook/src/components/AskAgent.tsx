@@ -667,7 +667,11 @@ function AssistantMessage({
   signUpHref: string;
 }) {
   const live = !["done", "error", "stopped"].includes(m.phase);
-  const elapsed = m.startedAt ? (m.elapsedMs ?? now - m.startedAt) : undefined;
+  const elapsed = m.startedAt
+    ? live
+      ? now - m.startedAt
+      : (m.elapsedMs ?? now - m.startedAt)
+    : undefined;
   return (
     <div className="flex flex-col gap-2.5">
       {/* Tool steps — collapsible once answering, live while searching */}
@@ -714,16 +718,23 @@ function AssistantMessage({
           </div>
           {m.progress.length > 0 && (
             <ol className="mt-2 space-y-1 border-l border-border pl-3 font-mono text-[11px] text-muted-2">
-              {m.progress.slice(-4).map((p) => (
-                <li key={p.id}>
-                  {p.elapsedMs !== undefined && (
-                    <span className="mr-2 tabular-nums">
-                      {formatElapsed(p.elapsedMs)}
-                    </span>
-                  )}
-                  {p.message}
-                </li>
-              ))}
+              {m.progress.slice(-4).map((p, index, rows) => {
+                const rowElapsed =
+                  live && index === rows.length - 1 && elapsed !== undefined
+                    ? elapsed
+                    : p.elapsedMs;
+
+                return (
+                  <li key={p.id}>
+                    {rowElapsed !== undefined && (
+                      <span className="mr-2 tabular-nums">
+                        {formatElapsed(rowElapsed)}
+                      </span>
+                    )}
+                    {p.message}
+                  </li>
+                );
+              })}
             </ol>
           )}
         </output>
