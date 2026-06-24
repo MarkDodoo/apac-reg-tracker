@@ -152,25 +152,27 @@ export default async function JudgmentPage({
           </div>
         )}
 
-        {typeof j.url === "string" && (
-          <a
-            href={j.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-5 inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3.5 py-2 text-sm font-medium text-muted transition-colors hover:border-accent hover:text-foreground"
-          >
-            <ExternalLinkIcon className="h-4 w-4" />
-            View official judgment on eLitigation
-          </a>
-        )}
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          {typeof j.url === "string" && (
+            <a
+              href={j.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3.5 py-2 text-sm font-medium text-muted transition-colors hover:border-accent hover:text-foreground"
+            >
+              <ExternalLinkIcon className="h-4 w-4" />
+              View official judgment on eLitigation
+            </a>
+          )}
 
-        <Link
-          href={`/ask?cite=${encodeURIComponent(decoded)}&kind=judgment`}
-          className="mt-5 inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent-soft px-3.5 py-2 text-sm font-medium text-accent transition-colors hover:border-accent hover:bg-accent hover:text-primary-fg"
-        >
-          <SparkleIcon className="h-4 w-4" />
-          Ask Lawplain about this
-        </Link>
+          <Link
+            href={`/ask?cite=${encodeURIComponent(decoded)}&kind=judgment`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent-soft px-3.5 py-2 text-sm font-medium text-accent transition-colors hover:border-accent hover:bg-accent hover:text-primary-fg"
+          >
+            <SparkleIcon className="h-4 w-4" />
+            Ask Lawplain about this
+          </Link>
+        </div>
       </header>
 
       <section className="mt-8">
