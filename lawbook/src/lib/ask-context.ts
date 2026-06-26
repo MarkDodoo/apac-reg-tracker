@@ -10,7 +10,7 @@ import type { ChatContext } from "@/lib/agent";
 import {
   sgjudge,
   sortStatuteSections,
-  statuteSectionText,
+  statuteSectionDisplayText,
 } from "@/lib/sgjudge";
 
 /** Cap the excerpt so the preamble doesn't dominate the context window. */
@@ -63,7 +63,7 @@ export async function loadChatContext(
     const sections = sortStatuteSections(s.sections)
       .map((sec) => {
         const h = sec.heading ? ` — ${sec.heading}` : "";
-        return `## ${sec.section_no}${h}\n${statuteSectionText(sec)}`;
+        return `## ${sec.section_no}${h}\n${statuteSectionDisplayText(sec)}`;
       })
       .join("\n\n");
     return {

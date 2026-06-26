@@ -277,6 +277,31 @@ export function statuteSectionText(section: StatuteSection): string {
   return text ?? bodyText ?? "";
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function statuteSectionDisplayText(section: StatuteSection): string {
+  let text = statuteSectionText(section)
+    .replace(/^\uFEFF/, "")
+    .trim();
+  const sectionNo = section.section_no.trim();
+  if (!sectionNo) return text;
+
+  const escapedNo = escapeRegExp(sectionNo);
+  const numberLead = `${escapedNo}\\s*\\.?\\s*(?:[—–-]\\s*)?`;
+
+  if (section.heading?.trim()) {
+    const escapedHeading = escapeRegExp(section.heading.trim());
+    text = text.replace(
+      new RegExp(`^${escapedHeading}\\s+${numberLead}`, "i"),
+      "",
+    );
+  }
+
+  return text.replace(new RegExp(`^${numberLead}`, "i"), "").trimStart();
+}
+
 type SectionNoParts = {
   numeric: boolean;
   number: number;

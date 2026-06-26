@@ -10,13 +10,12 @@ import {
 } from "@/components/icons";
 import { SavedAuthorityButton } from "@/components/SavedAuthorityButton";
 import { StatuteSectionShell } from "@/components/StatuteSectionShell";
-import { statuteSectionPinpointLabel } from "@/lib/citations";
 import {
   ApiError,
   type StatuteDetail,
   sgjudge,
   sortStatuteSections,
-  statuteSectionText,
+  statuteSectionDisplayText,
 } from "@/lib/sgjudge";
 
 async function load(reference: string): Promise<StatuteDetail> {
@@ -35,6 +34,68 @@ async function load(reference: string): Promise<StatuteDetail> {
 function safeReturnTo(value?: string): string | null {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return null;
   return value;
+}
+
+function firstString(value?: string | string[]): string {
+  return Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
+}
+
+function provisionLevel(marker: string): number {
+  const value = marker.slice(1, -1).toLowerCase();
+  if (/^\d+$/.test(value)) return 0;
+  if (
+    /^(?=[mdclxvi])m{0,4}(cm|cd|d?c{0,3})(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})$/.test(
+      value,
+    )
+  ) {
+    return 2;
+  }
+  return 1;
+}
+
+function provisionLines(text: string): string[] {
+  return text
+    .replace(/([.;:—–-])\s+(?=\((?:\d+|[a-z]|[ivxlcdm]+)\)\s+)/gi, "$1\n")
+    .split(/\n+/);
+}
+
+function ProvisionText({ text }: { text: string }) {
+  const lines = provisionLines(text)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return (
+    <div className="mt-3 flex max-w-[68ch] flex-col gap-4 font-serif text-[17px] leading-7 text-foreground/90">
+      {lines.map((line, index) => {
+        const match = line.match(
+          /^(\((?:\d+|[a-z]|[ivxlcdm]+)\))\s*([\s\S]*)$/i,
+        );
+        if (!match) {
+          return (
+            <p key={`${index}-${line}`} className="scroll-mt-24 pl-10">
+              {line}
+            </p>
+          );
+        }
+
+        const marker = match[1];
+        const body = match[2];
+        const level = provisionLevel(marker);
+        return (
+          <p
+            key={`${index}-${line}`}
+            className="flex scroll-mt-24 gap-3"
+            style={{ marginLeft: `${level * 1.25}rem` }}
+          >
+            <span className="w-7 shrink-0 select-none text-right font-sans text-sm font-medium tabular-nums text-muted-2">
+              {marker}
+            </span>
+            <span className="flex-1">{body}</span>
+          </p>
+        );
+      })}
+    </div>
+  );
 }
 
 export async function generateMetadata({
@@ -57,12 +118,17 @@ export default async function StatutePage({
   searchParams,
 }: {
   params: Promise<{ reference: string }>;
-  searchParams: Promise<{ q?: string; returnTo?: string }>;
+  searchParams: Promise<{
+    q?: string | string[];
+    returnTo?: string | string[];
+  }>;
 }) {
-  const [{ reference }, { q = "", returnTo }] = await Promise.all([
+  const [{ reference }, rawSearchParams] = await Promise.all([
     params,
     searchParams,
   ]);
+  const q = firstString(rawSearchParams.q);
+  const returnTo = firstString(rawSearchParams.returnTo);
   const decoded = decodeURIComponent(reference);
   const s = await load(decoded);
   const sections = sortStatuteSections(s.sections);
@@ -76,7 +142,7 @@ export default async function StatutePage({
   };
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-5 py-10 sm:px-8">
+    <main className="mx-auto w-full max-w-[calc(68ch+16rem+1.5rem+4rem)] px-5 py-10 sm:px-8">
       <Link
         href={safeReturnTo(returnTo) ?? "/?tab=statutes"}
         className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-foreground"
@@ -137,7 +203,7 @@ export default async function StatutePage({
           sections={sections.map((sec) => ({
             id: `s-${sec.section_no}`,
             label: sec.heading
-              ? `${sec.section_no} — ${sec.heading}`
+              ? `${sec.section_no} ${sec.heading}`
               : sec.section_no,
           }))}
         >
@@ -146,7 +212,7 @@ export default async function StatutePage({
             docId={decoded}
             title={title}
             path={pagePath}
-            className="flex flex-col gap-8"
+            className="flex flex-col gap-4"
           >
             {sections.length === 0 ? (
               <p className="rounded-lg border border-dashed border-border-strong bg-surface p-8 text-center text-sm text-muted">
@@ -154,7 +220,7 @@ export default async function StatutePage({
               </p>
             ) : (
               sections.map((sec) => {
-                const text = statuteSectionText(sec);
+                const text = statuteSectionDisplayText(sec);
                 return (
                   <article
                     key={sec.section_no}
@@ -162,26 +228,13 @@ export default async function StatutePage({
                     data-section-id={`s-${sec.section_no}`}
                     className="scroll-mt-24"
                   >
-                    <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <h3 className="font-serif text-lg font-semibold text-foreground">
-                        <span className="text-accent">§ {sec.section_no}</span>
-                        {sec.heading ? ` — ${sec.heading}` : ""}
-                      </h3>
-                      <CopyActions
-                        source={{
-                          ...source,
-                          pinpoint: statuteSectionPinpointLabel(sec.section_no),
-                        }}
-                        path={`${pagePath}#s-${sec.section_no}`}
-                        citationLabel="Copy section"
-                        compact
-                      />
-                    </div>
-                    {text && (
-                      <p className="whitespace-pre-wrap text-[15px] leading-7 text-foreground/90">
-                        {text}
-                      </p>
-                    )}
+                    <h2 className="grid max-w-[68ch] grid-cols-[2.25rem_1fr] gap-3 pt-3 font-sans text-xs font-semibold uppercase tracking-[0.14em] text-accent">
+                      <span className="select-none text-right text-sm font-medium tabular-nums text-muted-2">
+                        {sec.section_no}
+                      </span>
+                      <span>{sec.heading || "Section"}</span>
+                    </h2>
+                    {text && <ProvisionText text={text} />}
                   </article>
                 );
               })
