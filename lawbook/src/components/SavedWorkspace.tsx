@@ -271,9 +271,9 @@ export function SavedWorkspace() {
                   onClick={() => void removeAuthority(item)}
                   aria-label={`Unsave ${item.title}`}
                   title="Unsave"
-                  className="absolute right-3 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-2 transition-colors hover:bg-border hover:text-foreground"
+                  className="absolute right-3 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-2 transition-colors hover:bg-border hover:text-foreground"
                 >
-                  <XIcon className="h-3.5 w-3.5" />
+                  <XIcon className="h-4 w-4" />
                 </button>
               </li>
             ))}
