@@ -1,10 +1,13 @@
 "use client";
 
 import { useAnalyticsConsent } from "@/hooks/useAnalyticsConsent";
+import { authClient } from "@/lib/auth-client";
 
 export function AnalyticsConsentBanner() {
   const { showNotice, allow, optOut } = useAnalyticsConsent();
-  if (!showNotice) return null;
+  const { data: session, isPending } = authClient.useSession();
+
+  if (isPending || session?.user || !showNotice) return null;
 
   return (
     <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-3xl rounded-xl border border-border bg-surface/95 p-3 text-sm shadow-lg backdrop-blur sm:bottom-4 sm:flex sm:items-center sm:justify-between sm:gap-4">
