@@ -329,7 +329,7 @@ export function SearchExplorer({
       </div>
 
       {isSignedIn && recentSearches.length > 0 && (
-        <section className="mt-2 overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
+        <section className="mt-4 overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
           <div className="flex items-center justify-between border-border border-b px-4 py-2">
             <span className="text-xs font-medium text-muted-2">
               Recent searches
@@ -475,9 +475,7 @@ export function SearchExplorer({
                       filters={filters}
                       fraction={relevance}
                       onBeforeNavigate={
-                        isSignedIn && tab === "judgments"
-                          ? recordCurrentSearch
-                          : undefined
+                        isSignedIn ? recordCurrentSearch : undefined
                       }
                     />
                   </li>
