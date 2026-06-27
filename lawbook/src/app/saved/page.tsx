@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
 import { SavedWorkspace } from "@/components/SavedWorkspace";
+import { buildMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Saved — Lawplain",
-};
+export const metadata: Metadata = buildMetadata({
+  title: "Saved Research",
+  description: "Your private saved Singapore legal research workspace.",
+  path: "/saved",
+  noIndex: true,
+});
 
 export default function SavedPage() {
   return (
