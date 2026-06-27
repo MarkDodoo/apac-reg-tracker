@@ -126,3 +126,24 @@ mark[data-match][data-active] {
 .thin-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* Product-motion tokens + entrance animation (transitions.dev-adjacent).
+   The prefers-reduced-motion block above neutralizes these for opted-out users. */
+:root {
+  --ease-emphasized: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes motion-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.motion-fade-up {
+  animation: motion-fade-up 360ms var(--ease-emphasized) both;
+}

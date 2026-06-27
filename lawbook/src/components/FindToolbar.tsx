@@ -25,7 +25,7 @@ export function FindToolbar({
   onNext: () => void;
 }) {
   return (
-    <div className="sticky top-16 z-10 mb-4 flex items-center justify-between gap-3 rounded-lg border border-border bg-surface/95 px-4 py-2.5 text-sm shadow-sm backdrop-blur">
+    <div className="motion-fade-up sticky top-16 z-10 mb-4 flex items-center justify-between gap-3 rounded-lg border border-border bg-surface/95 px-4 py-2.5 text-sm shadow-sm backdrop-blur">
       <span className="min-w-0 truncate text-muted">
         {matchCount > 0 ? (
           <>
