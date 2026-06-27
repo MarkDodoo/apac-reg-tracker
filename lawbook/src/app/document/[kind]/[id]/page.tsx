@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DocumentBody } from "@/components/DocumentBody";
+import { EmptyState } from "@/components/EmptyState";
 import { ArrowLeftIcon, ExternalLinkIcon } from "@/components/icons";
 import { SelectionTools } from "@/components/SelectionTools";
 import { Snippet } from "@/components/Snippet";
@@ -191,13 +192,15 @@ export default async function DocumentResultPage({
               </h2>
               <Snippet html={snippet} className="text-base" />
               <p className="mt-4 text-xs text-muted-2">
-                Full document text is not available for this result.
+                Only this excerpt is available — the full document text isn’t in
+                the corpus yet.
               </p>
             </div>
           ) : (
-            <p className="text-sm text-muted">
-              Full document text is not available for this result.
-            </p>
+            <EmptyState
+              title="Full document text unavailable"
+              hint="This result isn’t available as a full document yet. Try the official source if one is linked."
+            />
           )}
         </section>
         {hasBody && (

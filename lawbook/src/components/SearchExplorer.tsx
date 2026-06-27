@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { EmptyState } from "@/components/EmptyState";
 import { SearchIcon, XIcon } from "@/components/icons";
 import { ScoreBar } from "@/components/ScoreBar";
 import { Snippet } from "@/components/Snippet";
@@ -514,9 +515,10 @@ export function SearchExplorer({
               </div>
             </div>
             {data.results.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-border-strong bg-surface p-8 text-center text-sm text-muted">
-                No matches. Try broader keywords or remove a filter.
-              </div>
+              <EmptyState
+                title={`No matches for “${data.query}”`}
+                hint="Try broader or different keywords, switch corpus tabs, or clear a filter."
+              />
             ) : (
               <ul className="flex flex-col gap-3">
                 {ranked.map(({ hit, relevance }, i) => (

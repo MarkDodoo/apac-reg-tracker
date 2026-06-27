@@ -12,6 +12,8 @@ import {
 import {
   ArrowUpIcon,
   BookIcon,
+  CheckIcon,
+  CopyIcon,
   SparkleIcon,
   StopIcon,
   XIcon,
@@ -948,6 +950,75 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
   );
 }
 
+function AnswerActions({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard may be unavailable
+    }
+  }
+
+  function exportMarkdown() {
+    const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `lawplain-answer-${new Date().toISOString().slice(0, 10)}.md`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  const btn =
+    "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-2 transition-colors hover:bg-surface-2 hover:text-foreground";
+
+  return (
+    <div className="flex items-center gap-1 border-t border-border/60 pt-2">
+      <button
+        type="button"
+        onClick={copy}
+        className={btn}
+        aria-label="Copy answer"
+      >
+        {copied ? (
+          <CheckIcon className="h-3.5 w-3.5" />
+        ) : (
+          <CopyIcon className="h-3.5 w-3.5" />
+        )}
+        {copied ? "Copied" : "Copy"}
+      </button>
+      <button
+        type="button"
+        onClick={exportMarkdown}
+        className={btn}
+        aria-label="Export answer as Markdown"
+      >
+        <svg
+          viewBox="0 0 16 16"
+          aria-hidden="true"
+          className="h-3.5 w-3.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M8 2v8" />
+          <path d="m5 7 3 3 3-3" />
+          <path d="M3 13h10" />
+        </svg>
+        Export .md
+      </button>
+    </div>
+  );
+}
+
 function AssistantMessage({
   m,
   now,
@@ -1041,6 +1112,11 @@ function AssistantMessage({
             <span className="ml-0.5 inline-block h-4 w-[3px] animate-pulse rounded-full bg-accent align-middle" />
           )}
         </div>
+      )}
+
+      {/* Answer actions — copy / export, once the answer is complete (#22) */}
+      {m.text && !live && m.phase !== "error" && (
+        <AnswerActions text={m.text} />
       )}
 
       {/* Stopped / error */}
