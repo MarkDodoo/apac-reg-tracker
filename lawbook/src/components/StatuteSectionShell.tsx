@@ -130,7 +130,9 @@ export function StatuteSectionShell({
             onNext={goNext}
           />
         )}
-        <div ref={containerRef}>{children}</div>
+        <div ref={containerRef} data-selectable>
+          {children}
+        </div>
       </div>
       {showSectionNav && <SectionNav items={navItems} />}
       <BackToTop />

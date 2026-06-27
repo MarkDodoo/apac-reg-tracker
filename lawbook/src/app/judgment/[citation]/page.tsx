@@ -9,6 +9,13 @@ import {
 } from "@/components/icons";
 import { JudgmentBody } from "@/components/JudgmentBody";
 import { SavedAuthorityButton } from "@/components/SavedAuthorityButton";
+import { SelectionTools } from "@/components/SelectionTools";
+import {
+  buildMetadata,
+  creativeWorkJsonLd,
+  jsonLdScriptProps,
+  metaDescription,
+} from "@/lib/seo";
 import {
   ApiError,
   type JudgmentDetail,
@@ -33,22 +40,43 @@ async function load(citation: string): Promise<JudgmentDetail> {
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ citation: string }>;
+  searchParams: Promise<{ q?: string; returnTo?: string }>;
 }): Promise<Metadata> {
-  const { citation } = await params;
+  const [{ citation }, { q, returnTo }] = await Promise.all([
+    params,
+    searchParams,
+  ]);
   const decoded = decodeURIComponent(citation);
+  const hasQueryVariant = Boolean(q || returnTo);
   try {
     const j = await sgjudge.getJudgment(
       decoded,
       { body_length: 1 },
       { cache: "no-store" },
     );
+    const title = (j.title as string) || j.neutral_cite || decoded;
     return {
-      title: `${(j.title as string) || j.neutral_cite || decoded} — Lawplain`,
+      ...buildMetadata({
+        title,
+        description: judgmentDescription(j, decoded),
+        path: `/judgment/${encodeURIComponent(decoded)}`,
+        type: "article",
+        noIndex: hasQueryVariant,
+        noIndexFollow: hasQueryVariant,
+      }),
     };
   } catch {
-    return { title: `${decoded} — Lawplain` };
+    return buildMetadata({
+      title: decoded,
+      description: `Read ${decoded} on Lawplain's Singapore legal research corpus.`,
+      path: `/judgment/${encodeURIComponent(decoded)}`,
+      type: "article",
+      noIndex: hasQueryVariant,
+      noIndexFollow: hasQueryVariant,
+    });
   }
 }
 
@@ -81,6 +109,7 @@ export default async function JudgmentPage({
     year: j.year,
   };
   const pagePath = `/judgment/${encodeURIComponent(decoded)}`;
+  const description = judgmentDescription(j, decoded);
 
   const metaRows: { label: string; value: React.ReactNode }[] = [];
   if (j.court) metaRows.push({ label: "Tribunal", value: courtName(j.court) });
@@ -110,106 +139,127 @@ export default async function JudgmentPage({
     });
 
   return (
-    <main className="mx-auto w-full max-w-[calc(68ch+16rem+1.5rem+4rem)] px-5 py-10 sm:px-8">
-      <Link
-        href={safeReturnTo(returnTo) ?? "/?tab=judgments"}
-        className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-foreground"
-      >
-        <ArrowLeftIcon className="h-4 w-4" />
-        Back to search
-      </Link>
-
-      <header className="border-b border-border pb-6">
-        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
-          {j.court && (
-            <span className="rounded bg-primary px-2 py-0.5 font-medium text-primary-fg">
-              {j.court}
-            </span>
-          )}
-          {j.neutral_cite && (
-            <span className="font-mono text-muted">{j.neutral_cite}</span>
-          )}
-        </div>
-        <h1 className="font-serif text-2xl font-medium leading-tight tracking-tight text-foreground sm:text-3xl">
-          {title}
-        </h1>
-
-        {metaRows.length > 0 && (
-          <dl className="mt-5 grid grid-cols-1 gap-x-6 gap-y-2.5 text-sm sm:grid-cols-[max-content_1fr]">
-            {metaRows.map((row) => (
-              <div key={row.label} className="sm:contents">
-                <dt className="text-xs font-semibold uppercase tracking-wide text-muted-2 sm:pt-0.5">
-                  {row.label}
-                </dt>
-                <dd className="mb-1 text-muted sm:mb-0">{row.value}</dd>
-              </div>
-            ))}
-          </dl>
+    <>
+      <script
+        type="application/ld+json"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is serialized with JSON.stringify and escaped in jsonLdScriptProps.
+        dangerouslySetInnerHTML={jsonLdScriptProps(
+          creativeWorkJsonLd({
+            name: title,
+            path: pagePath,
+            description,
+            citation: source.citation,
+            datePublished: j.decision_date,
+          }),
         )}
+      />
+      <main className="mx-auto w-full max-w-[calc(68ch+16rem+1.5rem+4rem)] px-5 py-10 sm:px-8">
+        <Link
+          href={safeReturnTo(returnTo) ?? "/?tab=judgments"}
+          className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-foreground"
+        >
+          <ArrowLeftIcon className="h-4 w-4" />
+          Back to search
+        </Link>
 
-        {catchwords.length > 0 && (
-          <div className="mt-4 flex flex-wrap gap-x-2 gap-y-1.5 border-l-2 border-border-strong pl-4">
-            {catchwords.flatMap((c) =>
-              catchwordSearchTerms(c).map((term) => (
-                <Link
-                  key={`${c}-${term}`}
-                  href={{
-                    pathname: "/",
-                    query: { tab: "judgments", q: term },
-                  }}
-                  title={c}
-                  className="font-serif text-sm italic leading-relaxed text-muted transition-colors hover:text-accent"
-                >
-                  {term}
-                </Link>
-              )),
+        <header className="border-b border-border pb-6">
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+            {j.court && (
+              <span className="rounded bg-primary px-2 py-0.5 font-medium text-primary-fg">
+                {j.court}
+              </span>
+            )}
+            {j.neutral_cite && (
+              <span className="font-mono text-muted">{j.neutral_cite}</span>
             )}
           </div>
-        )}
+          <h1 className="font-serif text-2xl font-medium leading-tight tracking-tight text-foreground sm:text-3xl">
+            {title}
+          </h1>
 
-        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-          {typeof j.url === "string" && (
-            <a
-              href={j.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3.5 py-2 text-sm font-medium text-muted transition-colors hover:border-accent hover:text-foreground"
-            >
-              <ExternalLinkIcon className="h-4 w-4" />
-              View official judgment on eLitigation
-            </a>
+          {metaRows.length > 0 && (
+            <dl className="mt-5 grid grid-cols-1 gap-x-6 gap-y-2.5 text-sm sm:grid-cols-[max-content_1fr]">
+              {metaRows.map((row) => (
+                <div key={row.label} className="sm:contents">
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted-2 sm:pt-0.5">
+                    {row.label}
+                  </dt>
+                  <dd className="mb-1 text-muted sm:mb-0">{row.value}</dd>
+                </div>
+              ))}
+            </dl>
           )}
 
-          <CopyActions source={source} path={pagePath} />
+          {catchwords.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-x-2 gap-y-1.5 border-l-2 border-border-strong pl-4">
+              {catchwords.flatMap((c) =>
+                catchwordSearchTerms(c).map((term) => (
+                  <Link
+                    key={`${c}-${term}`}
+                    href={{
+                      pathname: "/",
+                      query: { tab: "judgments", q: term },
+                    }}
+                    title={c}
+                    className="font-serif text-sm italic leading-relaxed text-muted transition-colors hover:text-accent"
+                  >
+                    {term}
+                  </Link>
+                )),
+              )}
+            </div>
+          )}
 
-          <SavedAuthorityButton
-            docType="judgment"
-            docId={decoded}
-            title={title}
-            path={pagePath}
+          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            {typeof j.url === "string" && (
+              <a
+                href={j.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3.5 py-2 text-sm font-medium text-muted transition-colors hover:border-accent hover:text-foreground"
+              >
+                <ExternalLinkIcon className="h-4 w-4" />
+                View official judgment on eLitigation
+              </a>
+            )}
+
+            <CopyActions source={source} path={pagePath} />
+
+            <SavedAuthorityButton
+              docType="judgment"
+              docId={decoded}
+              title={title}
+              path={pagePath}
+            />
+
+            <Link
+              href={`/ask?cite=${encodeURIComponent(decoded)}&kind=judgment`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent-soft px-3.5 py-2 text-sm font-medium text-accent transition-colors hover:border-accent hover:bg-accent hover:text-primary-fg"
+            >
+              <SparkleIcon className="h-4 w-4" />
+              Ask Lawplain about this
+            </Link>
+          </div>
+        </header>
+
+        <section className="mt-8">
+          <JudgmentBody
+            citation={decoded}
+            initialText={j.body_text ?? ""}
+            initialLoaded={initialLoaded}
+            total={j.body_length ?? initialLoaded}
+            query={q ?? ""}
+            initialSections={j.sections}
           />
-
-          <Link
-            href={`/ask?cite=${encodeURIComponent(decoded)}&kind=judgment`}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent-soft px-3.5 py-2 text-sm font-medium text-accent transition-colors hover:border-accent hover:bg-accent hover:text-primary-fg"
-          >
-            <SparkleIcon className="h-4 w-4" />
-            Ask Lawplain about this
-          </Link>
-        </div>
-      </header>
-
-      <section className="mt-8">
-        <JudgmentBody
-          citation={decoded}
-          initialText={j.body_text ?? ""}
-          initialLoaded={initialLoaded}
-          total={j.body_length ?? initialLoaded}
-          query={q ?? ""}
-          initialSections={j.sections}
+        </section>
+        <SelectionTools
+          title={title}
+          citation={j.neutral_cite || j.citation || decoded}
+          path={pagePath}
+          askKind="judgment"
         />
-      </section>
-    </main>
+      </main>
+    </>
   );
 }
 
@@ -234,6 +284,27 @@ const COURT_NAMES: Record<string, string> = {
 
 function courtName(code: string): string {
   return COURT_NAMES[code] ? `${COURT_NAMES[code]} (${code})` : code;
+}
+
+function judgmentDescription(j: JudgmentDetail, fallback: string): string {
+  const title = (j.title as string) || j.neutral_cite || fallback;
+  const citation = j.neutral_cite || j.citation || fallback;
+  const details = [
+    citation,
+    j.court ? courtName(j.court) : "Singapore judgment",
+    j.decision_date ? formatDate(j.decision_date) : undefined,
+  ].filter(Boolean);
+  const catchwords = parseJsonField<string[]>(j.catchwords_json, [])
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return metaDescription(
+    `Read ${title}${details.length > 0 ? ` (${details.join(", ")})` : ""}. ${
+      catchwords.length > 0
+        ? `Topics include ${catchwords.slice(0, 3).join("; ")}. `
+        : ""
+    }Search Singapore case law on Lawplain.`,
+  );
 }
 
 function safeReturnTo(value?: string): string | null {

@@ -331,6 +331,7 @@ export function JudgmentBody({
 
         <article
           ref={containerRef}
+          data-selectable
           className="flex max-w-[68ch] flex-col gap-4 font-serif text-[17px] leading-7 text-foreground/90"
         >
           {renderJudgment(blocks, regex, loadedSections)}
