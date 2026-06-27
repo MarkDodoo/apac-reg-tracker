@@ -1,8 +1,16 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DocumentBody } from "@/components/DocumentBody";
 import { ArrowLeftIcon, ExternalLinkIcon } from "@/components/icons";
+import { SelectionTools } from "@/components/SelectionTools";
 import { Snippet } from "@/components/Snippet";
+import {
+  buildMetadata,
+  creativeWorkJsonLd,
+  jsonLdScriptProps,
+  metaDescription,
+} from "@/lib/seo";
 import {
   type DocumentDetail,
   type DocumentKind,
@@ -18,6 +26,45 @@ const KIND_LABELS: Record<DocumentKind, string> = {
   subsidiary: "Subsidiary Legislation",
   practice: "Practice Direction",
 };
+
+export async function generateMetadata({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ kind: string; id: string }>;
+  searchParams: Promise<{
+    q?: string;
+    title?: string;
+    snippet?: string;
+    meta?: string;
+    returnTo?: string;
+  }>;
+}): Promise<Metadata> {
+  const [{ kind, id }, { q, title, snippet, meta, returnTo }] =
+    await Promise.all([params, searchParams]);
+  const decodedKind = decodeURIComponent(kind);
+  const decodedId = decodeURIComponent(id);
+  if (!isDocumentKind(decodedKind)) notFound();
+
+  const label = KIND_LABELS[decodedKind];
+  const detail = await loadDetailSummary(decodedKind, decodedId);
+  const displayTitle = detailTitle(detail) || title || `${label} ${decodedId}`;
+  const description = detail
+    ? documentDescription(decodedKind, detail, displayTitle)
+    : metaDescription(
+        `View ${displayTitle} on Lawplain. Search Singapore ${label.toLowerCase()} materials and related legal information.`,
+      );
+  const hasQueryVariant = Boolean(q || title || snippet || meta || returnTo);
+
+  return buildMetadata({
+    title: displayTitle,
+    description,
+    path: `/document/${encodeURIComponent(decodedKind)}/${encodeURIComponent(decodedId)}`,
+    type: "article",
+    noIndex: !detail || hasQueryVariant,
+    noIndexFollow: true,
+  });
+}
 
 export default async function DocumentResultPage({
   params,
@@ -53,87 +100,127 @@ export default async function DocumentResultPage({
   const total = (detail?.body_length as number) ?? initialLoaded;
   const sourceUrl = typeof detail?.url === "string" ? detail.url : undefined;
   const hasBody = Boolean(detail && initialText);
+  const pagePath = `/document/${encodeURIComponent(decodedKind)}/${encodeURIComponent(decodedId)}`;
+  const description = detail
+    ? documentDescription(decodedKind, detail, displayTitle)
+    : metaDescription(
+        `View ${displayTitle} on Lawplain. Search Singapore ${label.toLowerCase()} materials and related legal information.`,
+      );
 
   return (
-    <main className="mx-auto w-full max-w-[76ch] px-5 py-10 sm:px-8">
-      <Link
-        href={
-          safeReturnTo(returnTo) ?? `/?tab=${encodeURIComponent(decodedKind)}`
-        }
-        className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-foreground"
-      >
-        <ArrowLeftIcon className="h-4 w-4" />
-        Back to search
-      </Link>
+    <>
+      {detail && (
+        <script
+          type="application/ld+json"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is serialized with JSON.stringify and escaped in jsonLdScriptProps.
+          dangerouslySetInnerHTML={jsonLdScriptProps(
+            creativeWorkJsonLd({
+              name: displayTitle,
+              path: pagePath,
+              description,
+              datePublished: documentDate(decodedKind, detail),
+            }),
+          )}
+        />
+      )}
+      <main className="mx-auto w-full max-w-[76ch] px-5 py-10 sm:px-8">
+        <Link
+          href={
+            safeReturnTo(returnTo) ?? `/?tab=${encodeURIComponent(decodedKind)}`
+          }
+          className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-foreground"
+        >
+          <ArrowLeftIcon className="h-4 w-4" />
+          Back to search
+        </Link>
 
-      <header className="border-b border-border pb-6">
-        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-2">
-          <span className="rounded bg-primary px-2 py-0.5 font-medium text-primary-fg">
-            {label}
-          </span>
-          <span className="font-mono">{decodedId}</span>
-        </div>
-
-        <h1 className="font-serif text-2xl font-medium leading-tight tracking-tight text-foreground sm:text-3xl">
-          {displayTitle}
-        </h1>
-
-        {metaItems.length > 0 && (
-          <dl className="mt-5 grid grid-cols-1 gap-x-6 gap-y-2.5 text-sm sm:grid-cols-[max-content_1fr]">
-            {metaItems.map(([key, value]) => (
-              <div key={key} className="sm:contents">
-                <dt className="text-xs font-semibold uppercase tracking-wide text-muted-2 sm:pt-0.5">
-                  {key}
-                </dt>
-                <dd className="mb-1 text-muted sm:mb-0">{value}</dd>
-              </div>
-            ))}
-          </dl>
-        )}
-
-        {sourceUrl && (
-          <div className="mt-5">
-            <a
-              href={sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3.5 py-2 text-sm font-medium text-muted transition-colors hover:border-accent hover:text-foreground"
-            >
-              <ExternalLinkIcon className="h-4 w-4" />
-              View official source
-            </a>
+        <header className="border-b border-border pb-6">
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-2">
+            <span className="rounded bg-primary px-2 py-0.5 font-medium text-primary-fg">
+              {label}
+            </span>
+            <span className="font-mono">{decodedId}</span>
           </div>
-        )}
-      </header>
 
-      <section className="mt-8">
-        {hasBody ? (
-          <DocumentBody
-            kind={decodedKind}
-            docId={decodedId}
-            initialText={initialText}
-            initialLoaded={initialLoaded}
-            total={total}
-            query={q ?? ""}
-          />
-        ) : snippet ? (
-          <div>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-2">
-              Matching excerpt
-            </h2>
-            <Snippet html={snippet} className="text-base" />
-            <p className="mt-4 text-xs text-muted-2">
+          <h1 className="font-serif text-2xl font-medium leading-tight tracking-tight text-foreground sm:text-3xl">
+            {displayTitle}
+          </h1>
+
+          {metaItems.length > 0 && (
+            <dl className="mt-5 grid grid-cols-1 gap-x-6 gap-y-2.5 text-sm sm:grid-cols-[max-content_1fr]">
+              {metaItems.map(([key, value]) => (
+                <div key={key} className="sm:contents">
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted-2 sm:pt-0.5">
+                    {key}
+                  </dt>
+                  <dd className="mb-1 text-muted sm:mb-0">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+
+          {sourceUrl && (
+            <div className="mt-5">
+              <a
+                href={sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3.5 py-2 text-sm font-medium text-muted transition-colors hover:border-accent hover:text-foreground"
+              >
+                <ExternalLinkIcon className="h-4 w-4" />
+                View official source
+              </a>
+            </div>
+          )}
+        </header>
+
+        <section className="mt-8">
+          {hasBody ? (
+            <DocumentBody
+              kind={decodedKind}
+              docId={decodedId}
+              initialText={initialText}
+              initialLoaded={initialLoaded}
+              total={total}
+              query={q ?? ""}
+            />
+          ) : snippet ? (
+            <div>
+              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-2">
+                Matching excerpt
+              </h2>
+              <Snippet html={snippet} className="text-base" />
+              <p className="mt-4 text-xs text-muted-2">
+                Full document text is not available for this result.
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted">
               Full document text is not available for this result.
             </p>
-          </div>
-        ) : (
-          <p className="text-sm text-muted">
-            Full document text is not available for this result.
-          </p>
+          )}
+        </section>
+        {hasBody && (
+          <SelectionTools
+            title={displayTitle}
+            citation={decodedId}
+            path={`/document/${encodeURIComponent(decodedKind)}/${encodeURIComponent(decodedId)}`}
+          />
         )}
-      </section>
-    </main>
+      </main>
+    </>
   );
+}
+
+async function loadDetailSummary(
+  kind: DocumentKind,
+  id: string,
+): Promise<DocumentDetail | null> {
+  try {
+    return await sgjudge.getDocument(kind, id, {}, { cache: "no-store" });
+  } catch {
+    return null;
+  }
 }
 
 async function loadDetail(
@@ -159,6 +246,44 @@ function detailTitle(detail: DocumentDetail | null): string | undefined {
   const shortTitle =
     typeof detail.short_title === "string" ? detail.short_title.trim() : "";
   return topic || shortTitle || undefined;
+}
+
+function documentDescription(
+  kind: DocumentKind,
+  detail: DocumentDetail,
+  title: string,
+): string {
+  const label = KIND_LABELS[kind].toLowerCase();
+  const date = documentDate(kind, detail);
+  const rows = detailMeta(kind, detail)
+    .filter(([key]) => !/date|year|introduced|reading/i.test(key))
+    .slice(0, 2)
+    .map(([key, value]) => `${key}: ${value}`);
+
+  return metaDescription(
+    `Read ${title}, a Singapore ${label}${date ? ` from ${date}` : ""}. ${
+      rows.length > 0 ? `${rows.join("; ")}. ` : ""
+    }Search public legal materials on Lawplain.`,
+  );
+}
+
+function documentDate(
+  kind: DocumentKind,
+  detail: DocumentDetail,
+): string | undefined {
+  const candidates =
+    kind === "hansard"
+      ? [detail.date]
+      : kind === "bills"
+        ? [detail.introduced_date, detail.second_reading_date, detail.year]
+        : kind === "subsidiary"
+          ? [detail.doc_date]
+          : [detail.effective_date];
+
+  const value = candidates.find(
+    (item) => typeof item === "string" || typeof item === "number",
+  );
+  return value === undefined ? undefined : String(value);
 }
 
 function detailMeta(

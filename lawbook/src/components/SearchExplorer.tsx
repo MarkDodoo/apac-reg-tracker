@@ -148,10 +148,14 @@ export function SearchExplorer({
   courts = [],
   initialTab = "judgments",
   initialQuery = "",
+  onActiveChange,
 }: {
   courts?: string[];
   initialTab?: string;
   initialQuery?: string;
+  /** Notifies the parent when a query becomes (non-)empty, for the
+   *  Google-style hero collapse on the home page. */
+  onActiveChange?: (active: boolean) => void;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -174,6 +178,9 @@ export function SearchExplorer({
   const { data: session } = authClient.useSession();
   const isSignedIn = Boolean(session?.user);
 
+  useEffect(() => {
+    onActiveChange?.(q.trim().length > 0);
+  }, [q, onActiveChange]);
   function selectTab(next: TabId) {
     if (next === tab) return;
     setTab(next);
@@ -467,6 +474,8 @@ export function SearchExplorer({
                     key={
                       (hit.citation as string) ?? (hit.act_id as string) ?? i
                     }
+                    className="motion-fade-up"
+                    style={{ animationDelay: `${Math.min(i, 8) * 35}ms` }}
                   >
                     <ResultCard
                       tab={tab}

@@ -1,5 +1,25 @@
-import { SearchExplorer } from "@/components/SearchExplorer";
+import type { Metadata } from "next";
+import { HomeShell } from "@/components/HomeShell";
+import { buildMetadata, DEFAULT_DESCRIPTION, DEFAULT_TITLE } from "@/lib/seo";
 import { type StatsResponse, sgjudge } from "@/lib/sgjudge";
+
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string; q?: string }>;
+}): Promise<Metadata> {
+  const { tab, q } = await searchParams;
+  const hasQueryVariant = Boolean(tab || q?.trim());
+
+  return buildMetadata({
+    title: DEFAULT_TITLE,
+    description: DEFAULT_DESCRIPTION,
+    path: "/",
+    absoluteTitle: true,
+    noIndex: hasQueryVariant,
+    noIndexFollow: hasQueryVariant,
+  });
+}
 
 const CORPUS_LABELS: Record<string, string> = {
   judgments: "Judgments",
@@ -35,49 +55,31 @@ export default async function Home({
 
   const counts = stats?.counts ?? {};
   const countEntries = Object.entries(counts).filter(([, n]) => n > 0);
-  const hasInitialQuery = (q ?? "").trim().length > 0;
 
   return (
-    <main
-      className={`mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col px-5 sm:px-8 ${
-        hasInitialQuery ? "justify-start" : "justify-center"
-      }`}
-    >
-      {/* Brand — Google-style minimal landing */}
-      <section className={hasInitialQuery ? "pt-10 pb-5" : "pb-5"}>
-        <div className="mx-auto max-w-2xl text-center">
-          <h1 className="font-serif text-5xl font-medium tracking-tight text-foreground sm:text-7xl">
-            Lawplain<span className="text-accent">.</span>
-          </h1>
-          <p className="mt-3 text-sm font-semibold tracking-tight text-muted sm:text-base">
-            Search Singapore judgments, statutes, Hansard &amp; more
-          </p>
-        </div>
-      </section>
-
-      {/* Search */}
-      <section className="mx-auto max-w-2xl pb-3">
-        <SearchExplorer
-          courts={courts}
-          initialTab={tab ?? "judgments"}
-          initialQuery={q ?? ""}
-        />
-      </section>
-
-      {/* One quiet stats line, Google-footer style */}
-      {countEntries.length > 0 && (
-        <p className="mx-auto max-w-3xl pb-4 pt-4 text-center text-xs leading-relaxed text-muted-2">
-          {countEntries.map(([key, n], i) => (
-            <span key={key}>
-              {i > 0 && <span className="mx-1.5 text-border-strong">·</span>}
-              <span className="font-medium tabular-nums text-muted">
-                {n.toLocaleString()}
-              </span>{" "}
-              {CORPUS_LABELS[key] ?? key}
-            </span>
-          ))}
-        </p>
-      )}
+    <main className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col px-5 sm:px-8">
+      <HomeShell
+        courts={courts}
+        initialTab={tab ?? "judgments"}
+        initialQuery={q ?? ""}
+        stats={
+          countEntries.length > 0 ? (
+            <p className="mx-auto max-w-3xl pb-4 text-center text-xs leading-relaxed text-muted-2">
+              {countEntries.map(([key, n], i) => (
+                <span key={key}>
+                  {i > 0 && (
+                    <span className="mx-1.5 text-border-strong">·</span>
+                  )}
+                  <span className="font-medium tabular-nums text-muted">
+                    {n.toLocaleString()}
+                  </span>{" "}
+                  {CORPUS_LABELS[key] ?? key}
+                </span>
+              ))}
+            </p>
+          ) : null
+        }
+      />
     </main>
   );
 }
