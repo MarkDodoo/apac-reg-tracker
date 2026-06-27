@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CopyActions } from "@/components/CopyActions";
+import { EmptyState } from "@/components/EmptyState";
 import {
   ArrowLeftIcon,
   ExternalLinkIcon,
@@ -256,9 +257,10 @@ export default async function StatutePage({
           >
             <div className="flex flex-col gap-4">
               {sections.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-border-strong bg-surface p-8 text-center text-sm text-muted">
-                  No section text available for this statute.
-                </p>
+                <EmptyState
+                  title="Section text unavailable"
+                  hint="The full provision text for this statute isn’t in the corpus yet. Try the official source link above."
+                />
               ) : (
                 sections.map((sec) => {
                   const text = statuteSectionDisplayText(sec);
