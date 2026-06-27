@@ -98,8 +98,14 @@ export function JudgmentBody({
   const loadingRef = useRef(false);
   const autoLoads = useRef(0);
   const hashAutoLoads = useRef(0);
+  const initialHash = useRef<string | null>(null);
+  const hashScrolled = useRef(false);
   const [active, setActive] = useState(0);
   const [activeTouched, setActiveTouched] = useState(false);
+
+  if (initialHash.current === null && typeof window !== "undefined") {
+    initialHash.current = window.location.hash.slice(1);
+  }
 
   const hasMore = loaded < total;
   const pct = total > 0 ? Math.round((loaded / total) * 100) : 100;
@@ -174,6 +180,24 @@ export function JudgmentBody({
     }
   }, [hasMore, loading, loadMore]);
 
+  // Deep links (#section) must scroll into place after hydration and after any
+  // paginated body text has loaded. The browser's native hash scroll fires
+  // before client content settles, so re-apply it once the target exists.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-run as `text` grows so the target can resolve after pagination.
+  useEffect(() => {
+    if (hashScrolled.current) return;
+    const id = initialHash.current;
+    if (!id) {
+      hashScrolled.current = true;
+      return;
+    }
+    if (!document.getElementById(id)) return;
+    hashScrolled.current = true;
+    requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ block: "start" });
+    });
+  }, [text]);
+
   useEffect(() => {
     if (mockSuggestions) {
       setSuggestions(new Map(Object.entries(mockSuggestions)));
@@ -240,8 +264,12 @@ export function JudgmentBody({
       if (i === activeIndex) m.setAttribute("data-active", "");
       else m.removeAttribute("data-active");
     });
+    // When the URL deep-links to a section (#hash), let that section win the
+    // initial scroll instead of yanking the viewport to the first match. Once
+    // the user navigates matches (activeTouched), match scrolling resumes.
+    if (!activeTouched && initialHash.current) return;
     marks[activeIndex]?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [activeIndex, matchCount]);
+  }, [activeIndex, matchCount, activeTouched]);
 
   const goMatch = (dir: number) => {
     if (matchCount === 0) return;
