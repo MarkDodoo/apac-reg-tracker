@@ -449,6 +449,7 @@ function renderJudgment(
   for (const block of blocks) {
     const anchors: ReactNode[] = [];
     const blockEnd = block.endOffset ?? Number.MAX_SAFE_INTEGER;
+    let blockIsSectionHeading = false;
 
     while (
       sectionIndex < sections.length &&
@@ -456,6 +457,12 @@ function renderJudgment(
     ) {
       const section = sections[sectionIndex];
       currentSectionId = section.id;
+      // The backend knows this is a heading even when the local heuristic does
+      // not (multi-word, mixed-case titles). Style the matching block as a
+      // heading so it does not read as an indented body paragraph (issue #69).
+      if (sectionLabelMatchesBlock(section.label, block.body)) {
+        blockIsSectionHeading = true;
+      }
       anchors.push(
         <span
           key={`anchor-${section.id}`}
@@ -472,7 +479,7 @@ function renderJudgment(
     rendered.push(
       <div key={block.key} className="relative">
         {anchors}
-        {renderBlock(block, regex, currentSectionId)}
+        {renderBlock(block, regex, currentSectionId, blockIsSectionHeading)}
       </div>,
     );
   }
@@ -484,8 +491,9 @@ function renderBlock(
   b: Block,
   regex: RegExp | null,
   currentSectionId?: string,
+  forceHeading = false,
 ): ReactNode {
-  if (b.kind === "heading") {
+  if (b.kind === "heading" || forceHeading) {
     return (
       <h3
         data-section-id={currentSectionId}
@@ -518,4 +526,9 @@ function renderBlock(
       {highlight(b.body, regex, b.key)}
     </p>
   );
+}
+
+function sectionLabelMatchesBlock(label: string, body: string): boolean {
+  const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+  return norm(label) === norm(body);
 }
