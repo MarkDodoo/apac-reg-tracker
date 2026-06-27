@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Fragment,
   type ReactNode,
   useCallback,
   useEffect,
@@ -9,8 +8,11 @@ import {
   useRef,
   useState,
 } from "react";
+import { BackToTop } from "@/components/BackToTop";
+import { FindToolbar } from "@/components/FindToolbar";
 import { SectionNav, type SectionNavItem } from "@/components/SectionNav";
 import { useSectionEngagement } from "@/hooks/useSectionEngagement";
+import { highlightText } from "@/lib/highlight";
 import {
   type Block,
   buildRegex,
@@ -316,48 +318,15 @@ export function JudgmentBody({
     >
       <div className="min-w-0">
         {terms.length > 0 && (
-          <div className="sticky top-16 z-10 mb-4 flex items-center justify-between gap-3 rounded-lg border border-border bg-surface/95 px-4 py-2.5 text-sm shadow-sm backdrop-blur">
-            <span className="min-w-0 truncate text-muted">
-              {matchCount > 0 ? (
-                <>
-                  <span className="font-medium text-foreground">
-                    {matchCount}
-                  </span>{" "}
-                  match{matchCount === 1 ? "" : "es"} for{" "}
-                  <span className="font-medium text-foreground">
-                    &ldquo;{query}&rdquo;
-                  </span>
-                </>
-              ) : searching ? (
-                "Searching the judgment…"
-              ) : (
-                <>No matches for &ldquo;{query}&rdquo; in this judgment.</>
-              )}
-            </span>
-            {matchCount > 0 && (
-              <div className="flex shrink-0 items-center gap-1">
-                <span className="mr-1 tabular-nums text-muted-2">
-                  {activeIndex + 1}/{matchCount}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => goMatch(-1)}
-                  aria-label="Previous match"
-                  className="rounded-md border border-border px-2 py-1 leading-none text-muted transition-colors hover:border-border-strong hover:text-foreground"
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  onClick={() => goMatch(1)}
-                  aria-label="Next match"
-                  className="rounded-md border border-border px-2 py-1 leading-none text-muted transition-colors hover:border-border-strong hover:text-foreground"
-                >
-                  ↓
-                </button>
-              </div>
-            )}
-          </div>
+          <FindToolbar
+            query={query}
+            subject="judgment"
+            matchCount={matchCount}
+            activeIndex={activeIndex}
+            searching={searching}
+            onPrev={() => goMatch(-1)}
+            onNext={() => goMatch(1)}
+          />
         )}
 
         <article
@@ -398,43 +367,9 @@ export function JudgmentBody({
       </div>
 
       {showSectionNav && <SectionNav items={navItems} />}
+      <BackToTop />
     </div>
   );
-}
-
-function highlight(
-  text: string,
-  regex: RegExp | null,
-  keyBase: string,
-): ReactNode {
-  if (!regex) return text;
-  const out: ReactNode[] = [];
-  let last = 0;
-  regex.lastIndex = 0;
-  let m = regex.exec(text);
-  while (m !== null) {
-    const start = m.index;
-    if (start > last) {
-      out.push(
-        <Fragment key={`${keyBase}:t${last}`}>
-          {text.slice(last, start)}
-        </Fragment>,
-      );
-    }
-    out.push(
-      <mark key={`${keyBase}:m${start}`} data-match>
-        {m[0]}
-      </mark>,
-    );
-    last = start + m[0].length;
-    if (m[0].length === 0) regex.lastIndex += 1;
-    m = regex.exec(text);
-  }
-  if (out.length === 0) return text;
-  if (last < text.length) {
-    out.push(<Fragment key={`${keyBase}:tEnd`}>{text.slice(last)}</Fragment>);
-  }
-  return out;
 }
 
 function renderJudgment(
@@ -499,7 +434,7 @@ function renderBlock(
         data-section-id={currentSectionId}
         className="pt-3 font-sans text-xs font-semibold uppercase tracking-[0.14em] text-accent"
       >
-        {highlight(b.body, regex, b.key)}
+        {highlightText(b.body, regex, b.key)}
       </h3>
     );
   }
@@ -513,7 +448,7 @@ function renderBlock(
         <span className="w-7 shrink-0 select-none text-right font-sans text-sm font-medium tabular-nums text-muted-2">
           {b.num}
         </span>
-        <span className="flex-1">{highlight(b.body, regex, b.key)}</span>
+        <span className="flex-1">{highlightText(b.body, regex, b.key)}</span>
       </p>
     );
   }
@@ -523,7 +458,7 @@ function renderBlock(
       data-section-id={currentSectionId}
       className="scroll-mt-24 pl-10"
     >
-      {highlight(b.body, regex, b.key)}
+      {highlightText(b.body, regex, b.key)}
     </p>
   );
 }

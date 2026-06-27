@@ -1,14 +1,9 @@
 "use client";
 
-import {
-  Fragment,
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BackToTop } from "@/components/BackToTop";
+import { FindToolbar } from "@/components/FindToolbar";
+import { highlightText } from "@/lib/highlight";
 import { buildRegex, parseTerms } from "@/lib/sections";
 import { ApiError, type DocumentKind, sgjudge } from "@/lib/sgjudge";
 
@@ -18,7 +13,7 @@ const PAGE = 60000;
  * Full-document reader for hansard / bills / subsidiary legislation / practice
  * directions. Mirrors the Judgment reading experience (lazy body loading,
  * query highlighting, match count, prev/next match navigation, active-match
- * scrolling) without judgment-only features (section rail, suggestions).
+ * scrolling) using the shared FindToolbar + highlight primitives (issue #70).
  */
 export function DocumentBody({
   kind,
@@ -131,48 +126,15 @@ export function DocumentBody({
   return (
     <div>
       {terms.length > 0 && (
-        <div className="sticky top-16 z-10 mb-4 flex items-center justify-between gap-3 rounded-lg border border-border bg-surface/95 px-4 py-2.5 text-sm shadow-sm backdrop-blur">
-          <span className="min-w-0 truncate text-muted">
-            {matchCount > 0 ? (
-              <>
-                <span className="font-medium text-foreground">
-                  {matchCount}
-                </span>{" "}
-                match{matchCount === 1 ? "" : "es"} for{" "}
-                <span className="font-medium text-foreground">
-                  &ldquo;{query}&rdquo;
-                </span>
-              </>
-            ) : searching ? (
-              "Searching the document…"
-            ) : (
-              <>No matches for &ldquo;{query}&rdquo; in this document.</>
-            )}
-          </span>
-          {matchCount > 0 && (
-            <div className="flex shrink-0 items-center gap-1">
-              <span className="mr-1 tabular-nums text-muted-2">
-                {activeIndex + 1}/{matchCount}
-              </span>
-              <button
-                type="button"
-                onClick={() => goMatch(-1)}
-                aria-label="Previous match"
-                className="rounded-md border border-border px-2 py-1 leading-none text-muted transition-colors hover:border-border-strong hover:text-foreground"
-              >
-                ↑
-              </button>
-              <button
-                type="button"
-                onClick={() => goMatch(1)}
-                aria-label="Next match"
-                className="rounded-md border border-border px-2 py-1 leading-none text-muted transition-colors hover:border-border-strong hover:text-foreground"
-              >
-                ↓
-              </button>
-            </div>
-          )}
-        </div>
+        <FindToolbar
+          query={query}
+          subject="document"
+          matchCount={matchCount}
+          activeIndex={activeIndex}
+          searching={searching}
+          onPrev={() => goMatch(-1)}
+          onNext={() => goMatch(1)}
+        />
       )}
 
       <article
@@ -181,7 +143,7 @@ export function DocumentBody({
       >
         {paragraphs.map((p, i) => (
           <p key={`p-${i}-${p.slice(0, 24)}`} className="scroll-mt-24">
-            {highlight(p, regex, `p-${i}`)}
+            {highlightText(p, regex, `p-${i}`)}
           </p>
         ))}
       </article>
@@ -214,41 +176,8 @@ export function DocumentBody({
           End of document · {total.toLocaleString()} characters
         </p>
       )}
+
+      <BackToTop />
     </div>
   );
-}
-
-function highlight(
-  text: string,
-  regex: RegExp | null,
-  keyBase: string,
-): ReactNode {
-  if (!regex) return text;
-  const out: ReactNode[] = [];
-  let last = 0;
-  regex.lastIndex = 0;
-  let m = regex.exec(text);
-  while (m !== null) {
-    const start = m.index;
-    if (start > last) {
-      out.push(
-        <Fragment key={`${keyBase}:t${last}`}>
-          {text.slice(last, start)}
-        </Fragment>,
-      );
-    }
-    out.push(
-      <mark key={`${keyBase}:m${start}`} data-match>
-        {m[0]}
-      </mark>,
-    );
-    last = start + m[0].length;
-    if (m[0].length === 0) regex.lastIndex += 1;
-    m = regex.exec(text);
-  }
-  if (out.length === 0) return text;
-  if (last < text.length) {
-    out.push(<Fragment key={`${keyBase}:tEnd`}>{text.slice(last)}</Fragment>);
-  }
-  return out;
 }

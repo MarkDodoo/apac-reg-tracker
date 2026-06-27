@@ -1,8 +1,11 @@
 "use client";
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { BackToTop } from "@/components/BackToTop";
+import { FindToolbar } from "@/components/FindToolbar";
 import { SectionNav, type SectionNavItem } from "@/components/SectionNav";
 import { useSectionEngagement } from "@/hooks/useSectionEngagement";
+import { useTextFind } from "@/hooks/useTextFind";
 import { parseTerms } from "@/lib/sections";
 
 interface Suggestion {
@@ -25,6 +28,11 @@ export function StatuteSectionShell({
   const terms = useMemo(() => parseTerms(query), [query]);
   const [suggestions, setSuggestions] = useState<Map<string, Suggestion>>(
     () => new Map(),
+  );
+
+  const { matchCount, activeIndex, goPrev, goNext } = useTextFind(
+    containerRef,
+    query,
   );
 
   useSectionEngagement({
@@ -110,10 +118,22 @@ export function StatuteSectionShell({
           : "grid gap-6"
       }
     >
-      <div ref={containerRef} className="min-w-0">
-        {children}
+      <div className="min-w-0">
+        {terms.length > 0 && (
+          <FindToolbar
+            query={query}
+            subject="statute"
+            matchCount={matchCount}
+            activeIndex={activeIndex}
+            searching={false}
+            onPrev={goPrev}
+            onNext={goNext}
+          />
+        )}
+        <div ref={containerRef}>{children}</div>
       </div>
       {showSectionNav && <SectionNav items={navItems} />}
+      <BackToTop />
     </div>
   );
 }
