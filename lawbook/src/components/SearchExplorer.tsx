@@ -167,6 +167,9 @@ export function SearchExplorer({
   const [filters, setFilters] = useState<Filters>(() =>
     filtersFromSearchParams(searchParams),
   );
+  const [showFilters, setShowFilters] = useState(() =>
+    Object.values(filtersFromSearchParams(searchParams)).some(Boolean),
+  );
   const [data, setData] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -429,13 +432,60 @@ export function SearchExplorer({
         })}
       </div>
 
-      <FilterRow
-        tab={tab}
-        courts={courts}
-        filters={filters}
-        onChange={(patch) => setFilters((f) => ({ ...f, ...patch }))}
-        onClear={() => setFilters({})}
-      />
+      {(() => {
+        const activeCount = Object.values(filters).filter((v) =>
+          Boolean(v?.trim()),
+        ).length;
+        return (
+          <div className="mt-3 flex justify-center">
+            <button
+              type="button"
+              onClick={() => setShowFilters((s) => !s)}
+              aria-expanded={showFilters}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                showFilters || activeCount > 0
+                  ? "border-accent/40 bg-accent-soft text-accent"
+                  : "border-border text-muted-2 hover:bg-surface-2 hover:text-foreground"
+              }`}
+            >
+              <svg
+                viewBox="0 0 16 16"
+                aria-hidden="true"
+                className="h-3.5 w-3.5"
+                fill="currentColor"
+              >
+                <path d="M2 4h12l-4.5 5v3.5l-3 1.5V9z" />
+              </svg>
+              Filters
+              {activeCount > 0 && (
+                <span className="tabular-nums">· {activeCount}</span>
+              )}
+              <svg
+                viewBox="0 0 16 16"
+                aria-hidden="true"
+                className={`h-3 w-3 transition-transform ${showFilters ? "rotate-180" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="m4 6 4 4 4-4" />
+              </svg>
+            </button>
+          </div>
+        );
+      })()}
+
+      {showFilters && (
+        <FilterRow
+          tab={tab}
+          courts={courts}
+          filters={filters}
+          onChange={(patch) => setFilters((f) => ({ ...f, ...patch }))}
+          onClear={() => setFilters({})}
+        />
+      )}
 
       <div className="mt-5">
         {hasQuery && error && (
