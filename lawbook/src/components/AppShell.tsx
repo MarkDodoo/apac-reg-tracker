@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { AuthMenu } from "@/components/AuthMenu";
 import { useChrome } from "@/components/chrome/ChromeContext";
 import { BookIcon, SearchIcon, SparkleIcon } from "@/components/icons";
@@ -30,12 +30,13 @@ const NAV = [
 ];
 
 const EASE = "duration-500 ease-[var(--ease-emphasized)]";
+const COLLAPSE_KEY = "lawplain:sidebar-collapsed";
 
 /**
  * App chrome. Idle: a top header bar. As search becomes active the header
  * gracefully collapses and the same navigation slides in as a left sidebar
- * (shadcn-style), and the content shifts to make room. A slim icon rail on
- * mobile keeps the behaviour consistent on small screens.
+ * (shadcn-style), and the content shifts to make room. The desktop sidebar can
+ * be collapsed to an icon rail (persisted); mobile is always a slim icon rail.
  */
 export function AppShell({
   children,
@@ -46,6 +47,37 @@ export function AppShell({
 }) {
   const { searchActive } = useChrome();
   const pathname = usePathname();
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem(COLLAPSE_KEY) === "1");
+    } catch {
+      // localStorage may be unavailable; keep the default.
+    }
+  }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed((c) => {
+      const next = !c;
+      try {
+        localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
+      } catch {
+        // ignore persistence failures
+      }
+      return next;
+    });
+  };
+
+  // Label visibility: hidden on the mobile rail and on the collapsed desktop
+  // rail; shown only when the desktop sidebar is expanded.
+  const labelCls = collapsed ? "hidden" : "hidden lg:inline";
+  const asideWidth = collapsed ? "w-16" : "w-16 lg:w-60";
+  const contentPad = searchActive
+    ? collapsed
+      ? "pl-16"
+      : "pl-16 lg:pl-60"
+    : "";
 
   return (
     <>
@@ -88,19 +120,40 @@ export function AppShell({
 
       <aside
         aria-hidden={!searchActive}
-        className={`fixed inset-y-0 left-0 z-50 flex w-16 flex-col border-r border-border bg-background transition-transform ${EASE} lg:w-60 ${
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-background transition-[transform,width] ${EASE} ${asideWidth} ${
           searchActive ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex h-14 items-center px-3 lg:px-4">
+        <div className="flex h-14 items-center justify-between px-3 lg:px-4">
           <Link
             href="/"
             className="font-serif text-xl font-medium tracking-tight text-foreground"
           >
-            <span className="lg:hidden">L</span>
-            <span className="hidden lg:inline">Lawplain</span>
+            <span className={collapsed ? "" : "lg:hidden"}>L</span>
+            <span className={collapsed ? "hidden" : "hidden lg:inline"}>
+              Lawplain
+            </span>
             <span className="text-accent">.</span>
           </Link>
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="hidden rounded-md p-1.5 text-muted-2 transition-colors hover:bg-surface-2 hover:text-foreground lg:inline-flex"
+          >
+            <svg
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+              className={`h-4 w-4 transition-transform ${collapsed ? "rotate-180" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M10 3 5 8l5 5" />
+            </svg>
+          </button>
         </div>
         <nav className="flex flex-1 flex-col gap-1 px-2 py-2 lg:px-3">
           {NAV.map((tab) => {
@@ -118,20 +171,18 @@ export function AppShell({
                 }`}
               >
                 <Icon className="h-5 w-5 shrink-0" />
-                <span className="hidden truncate lg:inline">{tab.label}</span>
+                <span className={`truncate ${labelCls}`}>{tab.label}</span>
               </Link>
             );
           })}
         </nav>
         <div className="border-t border-border p-2 lg:p-3">
-          <SidebarAuth />
+          <SidebarAuth labelCls={labelCls} />
         </div>
       </aside>
 
       <div
-        className={`flex min-h-0 flex-1 flex-col transition-[padding] ${EASE} ${
-          searchActive ? "pl-16 lg:pl-60" : ""
-        }`}
+        className={`flex min-h-0 flex-1 flex-col transition-[padding] ${EASE} ${contentPad}`}
       >
         <div className="flex min-h-0 flex-1">{children}</div>
         {footer}
@@ -140,7 +191,7 @@ export function AppShell({
   );
 }
 
-function SidebarAuth() {
+function SidebarAuth({ labelCls }: { labelCls: string }) {
   const pathname = usePathname();
   const { data: session, isPending } = authClient.useSession();
   const next = encodeURIComponent(pathname || "/");
@@ -158,11 +209,13 @@ function SidebarAuth() {
           className="flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium text-muted-2 transition-colors hover:bg-surface-2 hover:text-foreground"
         >
           <UserIcon className="h-5 w-5 shrink-0" />
-          <span className="hidden lg:inline">Sign in</span>
+          <span className={labelCls}>Sign in</span>
         </Link>
         <Link
           href={`/sign-up?next=${next}`}
-          className="hidden rounded-lg bg-foreground px-2.5 py-2 text-center text-sm font-medium text-primary-fg transition-opacity hover:opacity-90 lg:block"
+          className={`rounded-lg bg-foreground px-2.5 py-2 text-center text-sm font-medium text-primary-fg transition-opacity hover:opacity-90 ${
+            labelCls === "hidden" ? "hidden" : "hidden lg:block"
+          }`}
         >
           Create account
         </Link>
@@ -176,7 +229,9 @@ function SidebarAuth() {
 
   return (
     <div className="flex items-center justify-between gap-2">
-      <span className="hidden min-w-0 truncate text-sm font-medium text-muted lg:inline">
+      <span
+        className={`min-w-0 truncate text-sm font-medium text-muted ${labelCls}`}
+      >
         {username}
       </span>
       <button
@@ -186,7 +241,7 @@ function SidebarAuth() {
         className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-muted-2 transition-colors hover:bg-surface-2 hover:text-foreground"
       >
         <LogoutIcon className="h-5 w-5 shrink-0" />
-        <span className="hidden lg:inline">Sign out</span>
+        <span className={labelCls}>Sign out</span>
       </button>
     </div>
   );
