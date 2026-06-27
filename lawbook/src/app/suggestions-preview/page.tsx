@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeftIcon, SparkleIcon } from "@/components/icons";
 import { JudgmentBody } from "@/components/JudgmentBody";
 import type { CitationSource } from "@/lib/citations";
+import { buildMetadata } from "@/lib/seo";
 
 const body = `Introduction
 
@@ -38,9 +39,13 @@ const source: CitationSource = {
   citation: "MOCK 2026 SGHC 1",
 };
 
-export const metadata: Metadata = {
-  title: "Suggested sections preview — Lawplain",
-};
+export const metadata: Metadata = buildMetadata({
+  title: "Suggested Sections Preview",
+  description:
+    "Internal preview page for Lawplain suggested judgment sections.",
+  path: "/suggestions-preview",
+  noIndex: true,
+});
 
 export default function SuggestionsPreviewPage() {
   return (

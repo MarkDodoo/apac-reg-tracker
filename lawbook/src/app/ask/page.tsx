@@ -11,12 +11,25 @@ import Link from "next/link";
 import { AskAgent } from "@/components/AskAgent";
 import { ArrowLeftIcon, SparkleIcon } from "@/components/icons";
 import { loadChatContext } from "@/lib/ask-context";
+import { buildMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Ask Lawplain — Singapore legal research",
-  description:
-    "Ask questions about Singapore law in plain English. An agent searches the corpus and writes a cited answer.",
-};
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ cite?: string; kind?: string }>;
+}): Promise<Metadata> {
+  const { cite, kind } = await searchParams;
+  const hasContextVariant = Boolean(cite || kind);
+
+  return buildMetadata({
+    title: "Ask Lawplain",
+    description:
+      "Ask plain-English questions across Singapore judgments, statutes, Hansard, bills and practice directions, with cited legal information from Lawplain.",
+    path: "/ask",
+    noIndex: hasContextVariant,
+    noIndexFollow: hasContextVariant,
+  });
+}
 
 export const dynamic = "force-dynamic";
 

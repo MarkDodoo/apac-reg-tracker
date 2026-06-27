@@ -1,7 +1,19 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Lora } from "next/font/google";
 import { AnalyticsConsentBanner } from "@/components/AnalyticsConsentBanner";
-import { SiteHeader } from "@/components/SiteHeader";
+import { AppShell } from "@/components/AppShell";
+import { ChromeProvider } from "@/components/chrome/ChromeContext";
+import {
+  DEFAULT_DESCRIPTION,
+  DEFAULT_TITLE,
+  jsonLdScriptProps,
+  OG_IMAGE,
+  SITE_KEYWORDS,
+  SITE_NAME,
+  SITE_ORIGIN,
+  webApplicationJsonLd,
+  websiteJsonLd,
+} from "@/lib/seo";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -21,9 +33,55 @@ const lora = Lora({
 });
 
 export const metadata: Metadata = {
-  title: "Lawplain — Singapore Legal Research",
-  description:
-    "Search Singapore judgments, statutes, subsidiary legislation, Hansard, bills and practice directions across the Lawplain legal corpus.",
+  metadataBase: new URL(SITE_ORIGIN),
+  applicationName: SITE_NAME,
+  title: {
+    default: DEFAULT_TITLE,
+    template: `%s | ${SITE_NAME}`,
+  },
+  description: DEFAULT_DESCRIPTION,
+  keywords: SITE_KEYWORDS,
+  category: "legal research",
+  alternates: {
+    canonical: "/",
+  },
+  icons: {
+    icon: "/favicon.ico",
+  },
+  manifest: "/manifest.webmanifest",
+  openGraph: {
+    type: "website",
+    title: DEFAULT_TITLE,
+    description: DEFAULT_DESCRIPTION,
+    url: "/",
+    siteName: SITE_NAME,
+    locale: "en_SG",
+    images: [
+      {
+        url: OG_IMAGE,
+        width: 1200,
+        height: 630,
+        alt: "Lawplain Singapore legal research preview",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: DEFAULT_TITLE,
+    description: DEFAULT_DESCRIPTION,
+    images: [OG_IMAGE],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
 };
 
 export default function RootLayout({
@@ -37,9 +95,17 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${lora.variable} h-full antialiased`}
     >
       <body className="flex min-h-svh flex-col overflow-x-clip bg-background text-foreground">
-        <SiteHeader />
-        <div className="flex min-h-0 flex-1">{children}</div>
-        <SiteFooter />
+        <script
+          type="application/ld+json"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is serialized with JSON.stringify and escaped in jsonLdScriptProps.
+          dangerouslySetInnerHTML={jsonLdScriptProps([
+            websiteJsonLd(),
+            webApplicationJsonLd(),
+          ])}
+        />
+        <ChromeProvider>
+          <AppShell footer={<SiteFooter />}>{children}</AppShell>
+        </ChromeProvider>
         <AnalyticsConsentBanner />
       </body>
     </html>
