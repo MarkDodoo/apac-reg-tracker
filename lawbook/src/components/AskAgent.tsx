@@ -834,7 +834,7 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
           </div>
         ) : (
           <div className="space-y-5">
-            {messages.map((m) =>
+            {messages.map((m, i) =>
               m.role === "user" ? (
                 <div key={m.id} className="flex justify-end">
                   <div className="max-w-[85%] rounded-2xl rounded-br-md bg-foreground px-3.5 py-2 text-sm text-primary-fg">
@@ -848,6 +848,13 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
                   now={now}
                   signInHref={signInHref}
                   signUpHref={signUpHref}
+                  question={
+                    messages[i - 1]?.role === "user" ? messages[i - 1].text : ""
+                  }
+                  cite={pinnedContext?.citation}
+                  kind={pinnedContext?.kind}
+                  sourceHref={pinnedContext?.href}
+                  isSignedIn={isSignedIn}
                 />
               ),
             )}
@@ -950,8 +957,29 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
   );
 }
 
-function AnswerActions({ text }: { text: string }) {
+function AnswerActions({
+  text,
+  question,
+  cite,
+  kind,
+  sourceHref,
+  tools,
+  isSignedIn,
+  signInHref,
+}: {
+  text: string;
+  question: string;
+  cite?: string;
+  kind?: string;
+  sourceHref?: string;
+  tools: string[];
+  isSignedIn: boolean;
+  signInHref: string;
+}) {
   const [copied, setCopied] = useState(false);
+  const [saveState, setSaveState] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
 
   async function copy() {
     try {
@@ -964,7 +992,10 @@ function AnswerActions({ text }: { text: string }) {
   }
 
   function exportMarkdown() {
-    const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+    const header = question ? `# ${question}\n\n` : "";
+    const blob = new Blob([header + text], {
+      type: "text/markdown;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -975,11 +1006,56 @@ function AnswerActions({ text }: { text: string }) {
     URL.revokeObjectURL(url);
   }
 
+  async function save() {
+    if (saveState === "saving" || saveState === "saved") return;
+    setSaveState("saving");
+    try {
+      const res = await fetch("/api/saved-answers", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          question,
+          answer: text,
+          cite,
+          kind,
+          sourceHref,
+          tools,
+        }),
+      });
+      setSaveState(res.ok ? "saved" : "error");
+    } catch {
+      setSaveState("error");
+    }
+  }
+
   const btn =
     "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-2 transition-colors hover:bg-surface-2 hover:text-foreground";
 
   return (
-    <div className="flex items-center gap-1 border-t border-border/60 pt-2">
+    <div className="flex flex-wrap items-center gap-1 border-t border-border/60 pt-2">
+      {isSignedIn ? (
+        <button
+          type="button"
+          onClick={save}
+          className={btn}
+          aria-label="Save answer"
+          disabled={saveState === "saving"}
+        >
+          <BookIcon className="h-3.5 w-3.5" />
+          {saveState === "saved"
+            ? "Saved"
+            : saveState === "saving"
+              ? "Saving…"
+              : saveState === "error"
+                ? "Retry save"
+                : "Save"}
+        </button>
+      ) : (
+        <Link href={signInHref} className={btn}>
+          <BookIcon className="h-3.5 w-3.5" />
+          Sign in to save
+        </Link>
+      )}
       <button
         type="button"
         onClick={copy}
@@ -1024,11 +1100,21 @@ function AssistantMessage({
   now,
   signInHref,
   signUpHref,
+  question,
+  cite,
+  kind,
+  sourceHref,
+  isSignedIn,
 }: {
   m: Message;
   now: number;
   signInHref: string;
   signUpHref: string;
+  question: string;
+  cite?: string;
+  kind?: string;
+  sourceHref?: string;
+  isSignedIn: boolean;
 }) {
   const live = !["done", "error", "stopped"].includes(m.phase);
   const elapsed = m.startedAt
@@ -1116,7 +1202,16 @@ function AssistantMessage({
 
       {/* Answer actions — copy / export, once the answer is complete (#22) */}
       {m.text && !live && m.phase !== "error" && (
-        <AnswerActions text={m.text} />
+        <AnswerActions
+          text={m.text}
+          question={question}
+          cite={cite}
+          kind={kind}
+          sourceHref={sourceHref}
+          tools={m.tools.map((t) => t.label)}
+          isSignedIn={isSignedIn}
+          signInHref={signInHref}
+        />
       )}
 
       {/* Stopped / error */}
