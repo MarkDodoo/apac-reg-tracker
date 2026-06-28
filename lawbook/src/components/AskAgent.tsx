@@ -605,6 +605,8 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
           .filter((m) => m.text.trim().length > 0)
           .slice(-12)
           .map((m) => ({ role: m.role, text: m.text.slice(0, 6000) }));
+        const runId = crypto.randomUUID();
+        runIdRef.current = runId;
         const res = await fetch("/api/ask", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -613,6 +615,8 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
             cite: pinnedContext?.citation,
             kind: pinnedContext?.kind,
             history,
+            runId,
+            from: 0,
           }),
           signal: ac.signal,
         });
@@ -749,6 +753,7 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
 
   // ── Saved threads: autosave each turn + resume from History ───────────
   const threadIdRef = useRef<string>("");
+  const runIdRef = useRef<string | null>(null);
   if (!threadIdRef.current) threadIdRef.current = crypto.randomUUID();
 
   // Autosave the thread shortly after each turn settles (signed-in only).
