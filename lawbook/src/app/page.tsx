@@ -1,3 +1,4 @@
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import { HomeShell } from "@/components/HomeShell";
 import { buildMetadata, DEFAULT_DESCRIPTION, DEFAULT_TITLE } from "@/lib/seo";
@@ -32,18 +33,58 @@ const CORPUS_LABELS: Record<string, string> = {
   commentary: "Commentary",
 };
 
-async function getStats(): Promise<StatsResponse | null> {
+const STATS_KEY = "stats:v1";
+const STATS_TTL_MS = 5 * 60 * 1000;
+
+interface CachedStats {
+  data: StatsResponse;
+  at: number;
+}
+
+async function fetchAndStore(
+  kv: KVNamespace | undefined,
+): Promise<StatsResponse | null> {
   try {
-    // Stats are a decorative count line — never let a cold/slow backend block
-    // the page. Cache the result (corpus updates out-of-band) and bail to no
-    // stats after a short wait; the page renders without them.
-    return await Promise.race([
-      sgjudge.stats({ next: { revalidate: 300 } }),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
-    ]);
+    const data = await sgjudge.stats({ cache: "no-store" });
+    if (data && kv) {
+      await kv
+        .put(STATS_KEY, JSON.stringify({ data, at: Date.now() } as CachedStats))
+        .catch(() => {});
+    }
+    return data;
   } catch {
     return null;
   }
+}
+
+async function getStats(): Promise<StatsResponse | null> {
+  const { env, ctx } = await getCloudflareContext({ async: true });
+  const kv = (env as { STATS_KV?: KVNamespace }).STATS_KV;
+
+  // 1. KV first — edge-fast, no backend round-trip on a hit.
+  let cached: CachedStats | null = null;
+  if (kv) {
+    try {
+      const raw = await kv.get(STATS_KEY);
+      if (raw) cached = JSON.parse(raw) as CachedStats;
+    } catch {
+      // ignore malformed / unavailable cache
+    }
+  }
+  if (cached && Date.now() - cached.at < STATS_TTL_MS) {
+    return cached.data; // fresh hit
+  }
+
+  // 2. Miss or stale — refresh in the background (fills KV) so we never block.
+  const refresh = fetchAndStore(kv);
+  ctx?.waitUntil(refresh.catch(() => {}));
+
+  // Serve stale instantly; on a cold cache wait briefly, else render w/o stats.
+  if (cached) return cached.data;
+  return Promise.race([
+    refresh,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+  ]);
 }
 
 export default async function Home({

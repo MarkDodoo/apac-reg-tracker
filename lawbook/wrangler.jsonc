@@ -24,6 +24,9 @@
     "bindings": [{ "name": "ASK_RUN_DO", "class_name": "AskRunDO" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AskRunDO"] }],
+  "kv_namespaces": [
+    { "binding": "STATS_KV", "id": "cf385a9570384a87b6879ba300b72609" }
+  ],
   "d1_databases": [
     {
       "binding": "AUTH_DB",
