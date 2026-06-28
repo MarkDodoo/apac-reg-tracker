@@ -34,8 +34,13 @@ const CORPUS_LABELS: Record<string, string> = {
 
 async function getStats(): Promise<StatsResponse | null> {
   try {
-    // Fresh each request; the corpus is small and updated out-of-band.
-    return await sgjudge.stats({ cache: "no-store" });
+    // Stats are a decorative count line — never let a cold/slow backend block
+    // the page. Cache the result (corpus updates out-of-band) and bail to no
+    // stats after a short wait; the page renders without them.
+    return await Promise.race([
+      sgjudge.stats({ next: { revalidate: 300 } }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+    ]);
   } catch {
     return null;
   }

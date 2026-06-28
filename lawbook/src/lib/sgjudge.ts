@@ -153,7 +153,11 @@ async function get<T>(
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
   }
-  const res = await fetch(url, init);
+  // Default timeout so a cold/slow backend can't hang an SSR render for ~25s.
+  const res = await fetch(url, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(12_000),
+  });
   if (!res.ok) {
     const body = (await res
       .json()
