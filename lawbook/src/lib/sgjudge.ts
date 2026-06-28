@@ -153,18 +153,32 @@ async function get<T>(
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
   }
-  // Default timeout so a cold/slow backend can't hang an SSR render for ~25s.
-  const res = await fetch(url, {
-    ...init,
-    signal: init?.signal ?? AbortSignal.timeout(12_000),
-  });
-  if (!res.ok) {
+  // Reuse a caller-supplied signal (search-as-you-type aborts on each keystroke);
+  // otherwise default to a timeout so a cold/slow backend can't hang SSR ~25s.
+  const external = init?.signal;
+  let lastError: ApiError | null = null;
+  // One quick retry on a transient backend overload (e.g. D1 "DB is overloaded"
+  // queue blips): the retry usually lands on the now-warm edge cache. Aborts and
+  // network errors propagate immediately — we never retry those (avoids piling
+  // more load onto an already-struggling backend).
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 350));
+    const res = await fetch(url, {
+      ...init,
+      signal: external ?? AbortSignal.timeout(12_000),
+    });
+    if (res.ok) return res.json() as Promise<T>;
     const body = (await res
       .json()
       .catch(() => ({ error: res.statusText }))) as { error?: string };
-    throw new ApiError(res.status, body.error || res.statusText);
+    const apiError = new ApiError(res.status, body.error || res.statusText);
+    if (res.status >= 500 && attempt === 0) {
+      lastError = apiError;
+      continue;
+    }
+    throw apiError;
   }
-  return res.json() as Promise<T>;
+  throw lastError ?? new ApiError(500, "request failed");
 }
 
 /* ------------------------------------------------------------------ */

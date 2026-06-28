@@ -71,7 +71,7 @@ interface SearchHistoryEntry {
 }
 
 const DEBOUNCE_MS = 250;
-const MIN_CHARS = 2;
+const MIN_CHARS = 3; // 1-2 char FTS prefixes (e.g. "sa") scan the whole corpus
 const FILTER_KEYS: (keyof Filters)[] = [
   "court",
   "year_range",
