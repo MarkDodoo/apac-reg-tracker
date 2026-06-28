@@ -738,6 +738,105 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
     e.preventDefault();
     void send(input);
   };
+
+  // ── Saved threads: autosave each turn + resume from History ───────────
+  const threadIdRef = useRef<string>("");
+  if (!threadIdRef.current) threadIdRef.current = crypto.randomUUID();
+
+  // Autosave the thread shortly after each turn settles (signed-in only).
+  useEffect(() => {
+    if (!isSignedIn || busy) return;
+    const hasAnswer = messages.some(
+      (m) =>
+        m.role === "assistant" && (m.text.length > 0 || m.phase === "error"),
+    );
+    if (!hasAnswer) return;
+    const title = (
+      messages.find((m) => m.role === "user")?.text ?? "Untitled"
+    ).slice(0, 120);
+    const persisted = messages.map((m) => ({
+      id: m.id,
+      role: m.role,
+      text: m.text,
+      tools: m.tools,
+      phase: m.phase,
+      cost: m.cost,
+      error: m.error,
+    }));
+    const id = threadIdRef.current;
+    const ac = new AbortController();
+    const timer = window.setTimeout(() => {
+      void fetch("/api/ask-threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          id,
+          title,
+          messages: persisted,
+          cite: pinnedContext?.citation,
+          kind: pinnedContext?.kind,
+          sourceHref: pinnedContext?.href,
+        }),
+        signal: ac.signal,
+      }).catch(() => {
+        // best-effort autosave
+      });
+    }, 900);
+    return () => {
+      window.clearTimeout(timer);
+      ac.abort();
+    };
+  }, [messages, busy, isSignedIn, pinnedContext]);
+
+  const newChat = useCallback(() => {
+    abortRef.current?.abort();
+    setBusy(false);
+    setMessages([]);
+    clearDraft();
+    setInput("");
+    clearQueuedPrompt();
+    threadIdRef.current = crypto.randomUUID();
+  }, [clearDraft, clearQueuedPrompt]);
+
+  const loadThread = useCallback(async (threadId: string) => {
+    try {
+      const res = await fetch(
+        `/api/ask-threads?id=${encodeURIComponent(threadId)}`,
+      );
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        thread?: {
+          messages?: Array<{
+            id?: number;
+            role?: string;
+            text?: string;
+            tools?: ToolStep[];
+            phase?: Phase;
+            cost?: { usd: number; tokens: number };
+            error?: string;
+          }>;
+        };
+      };
+      const raw = data.thread?.messages ?? [];
+      const loaded: Message[] = raw.map((m, i) => ({
+        id: typeof m.id === "number" ? m.id : i,
+        role: m.role === "user" ? "user" : "assistant",
+        text: typeof m.text === "string" ? m.text : "",
+        tools: Array.isArray(m.tools) ? m.tools : [],
+        progress: [],
+        phase: m.phase ?? "done",
+        cost: m.cost,
+        error: m.error,
+      }));
+      abortRef.current?.abort();
+      msgId.current = loaded.reduce((mx, m) => Math.max(mx, m.id), 0) + 1;
+      threadIdRef.current = threadId;
+      setBusy(false);
+      setMessages(loaded);
+    } catch {
+      // ignore load failures
+    }
+  }, []);
   const pinnedChip = pinnedContext ? (
     <div className="relative mb-4 rounded-xl border border-border bg-surface-2/60 pr-11 transition-colors hover:border-border-strong hover:bg-surface-2">
       <Link
@@ -871,6 +970,20 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
 
   return (
     <div className="flex flex-col">
+      {isSignedIn && (
+        <div className="mb-2 flex items-center justify-end gap-1">
+          <ThreadHistory activeId={threadIdRef.current} onResume={loadThread} />
+          {messages.length > 0 && (
+            <button
+              type="button"
+              onClick={newChat}
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-2 transition-colors hover:bg-surface-2 hover:text-foreground"
+            >
+              New chat
+            </button>
+          )}
+        </div>
+      )}
       {messages.length === 0 ? (
         <div className="flex flex-col items-center pt-2 text-center sm:pt-4">
           <span className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
@@ -903,20 +1016,6 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
         </div>
       ) : (
         <div className="flex min-h-[calc(100dvh-12rem)] flex-col">
-          <div className="mb-3 flex justify-end">
-            <button
-              type="button"
-              onClick={() => {
-                setMessages([]);
-                clearDraft();
-                setInput("");
-                clearQueuedPrompt();
-              }}
-              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-2 transition-colors hover:bg-surface-2 hover:text-foreground"
-            >
-              New chat
-            </button>
-          </div>
           {pinnedChip}
           <div
             role="log"
@@ -965,6 +1064,122 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
   );
 }
 
+interface ThreadListItem {
+  id: string;
+  title: string;
+  updatedAt: number;
+}
+
+function ThreadHistory({
+  activeId,
+  onResume,
+}: {
+  activeId: string;
+  onResume: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<ThreadListItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    fetch("/api/ask-threads")
+      .then((r) => (r.ok ? r.json() : { threads: [] }))
+      .then((d) =>
+        setItems((d as { threads?: ThreadListItem[] }).threads ?? []),
+      )
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false));
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  async function remove(id: string) {
+    setItems((xs) => xs.filter((x) => x.id !== id));
+    await fetch(`/api/ask-threads?id=${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }).catch(() => {});
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-2 transition-colors hover:bg-surface-2 hover:text-foreground"
+      >
+        History
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 z-30 mt-1.5 max-h-80 w-72 overflow-y-auto rounded-xl border border-border bg-surface p-1 shadow-lg">
+          {loading ? (
+            <p className="px-3 py-3 text-center text-xs text-muted-2">
+              Loading…
+            </p>
+          ) : items.length === 0 ? (
+            <p className="px-3 py-3 text-center text-xs text-muted-2">
+              No saved threads yet.
+            </p>
+          ) : (
+            items.map((t) => (
+              <div
+                key={t.id}
+                className="group flex items-center gap-1 rounded-lg hover:bg-surface-2"
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    onResume(t.id);
+                    setOpen(false);
+                  }}
+                  title={t.title}
+                  className={`min-w-0 flex-1 truncate px-2.5 py-2 text-left text-[13px] ${
+                    t.id === activeId
+                      ? "font-semibold text-foreground"
+                      : "text-muted"
+                  }`}
+                >
+                  {t.title || "Untitled"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void remove(t.id)}
+                  aria-label="Delete thread"
+                  className="mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-2 opacity-0 transition hover:bg-border hover:text-foreground group-hover:opacity-100"
+                >
+                  <XIcon className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 function AnswerActions({
   text,
   question,
