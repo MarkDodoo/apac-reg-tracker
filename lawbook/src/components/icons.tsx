@@ -73,6 +73,15 @@ export function SparkleIcon({ className }: IconProps) {
   );
 }
 
+export function UserIcon({ className }: IconProps) {
+  return (
+    <svg className={className} aria-hidden="true" {...base}>
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M5.5 20a6.5 6.5 0 0 1 13 0" />
+    </svg>
+  );
+}
+
 export function ArrowUpIcon({ className }: IconProps) {
   return (
     <svg className={className} aria-hidden="true" {...base}>

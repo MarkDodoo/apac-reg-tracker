@@ -10,12 +10,21 @@ import {
   useState,
 } from "react";
 import {
+  Bubble,
+  MessageAvatar,
+  MessageContent,
+  MessageFooter,
+  MessageHeader,
+  Message as MessageRow,
+} from "@/components/ask/message";
+import {
   ArrowUpIcon,
   BookIcon,
   CheckIcon,
   CopyIcon,
   SparkleIcon,
   StopIcon,
+  UserIcon,
   XIcon,
 } from "@/components/icons";
 import type { ChatContext } from "@/lib/agent";
@@ -836,11 +845,18 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
           <div className="space-y-5">
             {messages.map((m, i) =>
               m.role === "user" ? (
-                <div key={m.id} className="flex justify-end">
-                  <div className="max-w-[85%] rounded-2xl rounded-br-md bg-foreground px-3.5 py-2 text-sm text-primary-fg">
-                    {m.text}
-                  </div>
-                </div>
+                <MessageRow key={m.id} align="end">
+                  <MessageAvatar>
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-surface-2 text-muted-2">
+                      <UserIcon className="h-4 w-4" />
+                    </span>
+                  </MessageAvatar>
+                  <MessageContent>
+                    <Bubble variant="user" className="px-3.5 py-2 text-sm">
+                      {m.text}
+                    </Bubble>
+                  </MessageContent>
+                </MessageRow>
               ) : (
                 <AssistantMessage
                   key={m.id}
@@ -1123,138 +1139,152 @@ function AssistantMessage({
       : (m.elapsedMs ?? now - m.startedAt)
     : undefined;
   return (
-    <div className="flex flex-col gap-2.5">
-      {/* Tool steps — collapsible once answering, live while searching */}
-      {m.tools.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {m.tools.map((t) => (
-            <span
-              key={t.id}
-              className={`inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 font-mono text-[11px] ${
-                live ? "bg-surface-2 text-muted" : "bg-background text-muted-2"
-              }`}
-            >
+    <MessageRow align="start">
+      <MessageAvatar>
+        <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-accent-soft text-accent">
+          <SparkleIcon className="h-4 w-4" />
+        </span>
+      </MessageAvatar>
+      <MessageContent className="gap-2">
+        <MessageHeader>Lawplain</MessageHeader>
+
+        {/* Tool steps — live while searching, settled once answered */}
+        {m.tools.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {m.tools.map((t) => (
               <span
-                className={`h-1.5 w-1.5 rounded-full ${TOOL_DOT[t.kind]}`}
-              />
-              {t.label}
-              {t.count > 1 && (
-                <span className="rounded-full bg-background px-1.5 text-[10px] text-muted-2">
-                  ×{t.count}
-                </span>
-              )}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Live status */}
-      {live && (
-        <output
-          aria-live="polite"
-          className="rounded-xl border border-border bg-surface-2/70 px-3 py-2 text-[13px] text-muted"
-        >
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
-            </span>
-            <span className="font-medium text-foreground">
-              {PHASE_LABEL[m.phase]}…
-            </span>
-            {elapsed !== undefined && (
-              <span className="text-muted-2">{formatElapsed(elapsed)}</span>
-            )}
+                key={t.id}
+                className={`inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 font-mono text-[11px] ${
+                  live
+                    ? "bg-surface-2 text-muted"
+                    : "bg-background text-muted-2"
+                }`}
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${TOOL_DOT[t.kind]}`}
+                />
+                {t.label}
+                {t.count > 1 && (
+                  <span className="rounded-full bg-background px-1.5 text-[10px] text-muted-2">
+                    ×{t.count}
+                  </span>
+                )}
+              </span>
+            ))}
           </div>
-          {m.progress.length > 0 && (
-            <ol className="mt-2 space-y-1 border-l border-border pl-3 font-mono text-[11px] text-muted-2">
-              {m.progress.slice(-4).map((p, index, rows) => {
-                const rowElapsed =
-                  live && index === rows.length - 1 && elapsed !== undefined
-                    ? elapsed
-                    : p.elapsedMs;
+        )}
 
-                return (
-                  <li key={p.id}>
-                    {rowElapsed !== undefined && (
-                      <span className="mr-2 tabular-nums">
-                        {formatElapsed(rowElapsed)}
-                      </span>
-                    )}
-                    {p.message}
-                  </li>
-                );
-              })}
-            </ol>
-          )}
-        </output>
-      )}
+        {/* Live status */}
+        {live && (
+          <output
+            aria-live="polite"
+            className="w-full rounded-xl border border-border bg-surface-2/70 px-3 py-2 text-[13px] text-muted"
+          >
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+              </span>
+              <span className="font-medium text-foreground">
+                {PHASE_LABEL[m.phase]}…
+              </span>
+              {elapsed !== undefined && (
+                <span className="text-muted-2">{formatElapsed(elapsed)}</span>
+              )}
+            </div>
+            {m.progress.length > 0 && (
+              <ol className="mt-2 space-y-1 border-l border-border pl-3 font-mono text-[11px] text-muted-2">
+                {m.progress.slice(-4).map((p, index, rows) => {
+                  const rowElapsed =
+                    live && index === rows.length - 1 && elapsed !== undefined
+                      ? elapsed
+                      : p.elapsedMs;
 
-      {/* Answer body */}
-      {m.text && (
-        <div className="space-y-3 font-serif text-[15px] text-foreground">
-          {renderMarkdown(m.text)}
-          {live && (
-            <span className="ml-0.5 inline-block h-4 w-[3px] animate-pulse rounded-full bg-accent align-middle" />
-          )}
-        </div>
-      )}
+                  return (
+                    <li key={p.id}>
+                      {rowElapsed !== undefined && (
+                        <span className="mr-2 tabular-nums">
+                          {formatElapsed(rowElapsed)}
+                        </span>
+                      )}
+                      {p.message}
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </output>
+        )}
 
-      {/* Answer actions — copy / export, once the answer is complete (#22) */}
-      {m.text && !live && m.phase !== "error" && (
-        <AnswerActions
-          text={m.text}
-          question={question}
-          cite={cite}
-          kind={kind}
-          sourceHref={sourceHref}
-          tools={m.tools.map((t) => t.label)}
-          isSignedIn={isSignedIn}
-          signInHref={signInHref}
-        />
-      )}
+        {/* Answer body */}
+        {m.text && (
+          <Bubble
+            variant="assistant"
+            className="space-y-3 px-4 py-3 font-serif text-[15px] leading-relaxed"
+          >
+            {renderMarkdown(m.text)}
+            {live && (
+              <span className="ml-0.5 inline-block h-4 w-[3px] animate-pulse rounded-full bg-accent align-middle" />
+            )}
+          </Bubble>
+        )}
 
-      {/* Stopped / error */}
-      {m.phase === "stopped" && (
-        <p className="rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
-          Research stopped. Any partial answer above may be incomplete.
-        </p>
-      )}
-      {m.phase === "error" && m.error && (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-700">
-          {m.error === "Please sign in to use Ask Lawplain." ? (
-            <>
-              Please{" "}
-              <Link
-                href={signInHref}
-                className="font-medium underline decoration-red-700/40 underline-offset-2 hover:decoration-red-700"
-              >
-                sign in
-              </Link>{" "}
-              or{" "}
-              <Link
-                href={signUpHref}
-                className="font-medium underline decoration-red-700/40 underline-offset-2 hover:decoration-red-700"
-              >
-                sign up
-              </Link>{" "}
-              to use Ask Lawplain.
-            </>
-          ) : (
-            m.error
-          )}
-        </p>
-      )}
+        {/* Stopped / error */}
+        {m.phase === "stopped" && (
+          <p className="w-fit rounded-2xl rounded-bl-md bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
+            Research stopped. Any partial answer above may be incomplete.
+          </p>
+        )}
+        {m.phase === "error" && m.error && (
+          <p className="w-fit rounded-2xl rounded-bl-md bg-red-50 px-3 py-2 text-[13px] text-red-700">
+            {m.error === "Please sign in to use Ask Lawplain." ? (
+              <>
+                Please{" "}
+                <Link
+                  href={signInHref}
+                  className="font-medium underline decoration-red-700/40 underline-offset-2 hover:decoration-red-700"
+                >
+                  sign in
+                </Link>{" "}
+                or{" "}
+                <Link
+                  href={signUpHref}
+                  className="font-medium underline decoration-red-700/40 underline-offset-2 hover:decoration-red-700"
+                >
+                  sign up
+                </Link>{" "}
+                to use Ask Lawplain.
+              </>
+            ) : (
+              m.error
+            )}
+          </p>
+        )}
 
-      {/* Footer meta */}
-      {!live && (m.cost || m.phase === "done") && (
-        <p className="text-[11px] text-muted-2">
-          {m.cost
-            ? `${m.cost.tokens.toLocaleString()} tokens · $${m.cost.usd.toFixed(4)} · `
-            : ""}
-          not legal advice
-        </p>
-      )}
-    </div>
+        {/* Answer actions — copy / export / save, once complete (#22) */}
+        {m.text && !live && m.phase !== "error" && (
+          <AnswerActions
+            text={m.text}
+            question={question}
+            cite={cite}
+            kind={kind}
+            sourceHref={sourceHref}
+            tools={m.tools.map((t) => t.label)}
+            isSignedIn={isSignedIn}
+            signInHref={signInHref}
+          />
+        )}
+
+        {/* Footer meta */}
+        {!live && (m.cost || m.phase === "done") && (
+          <MessageFooter className="px-1 text-[11px] text-muted-2">
+            {m.cost
+              ? `${m.cost.tokens.toLocaleString()} tokens · $${m.cost.usd.toFixed(4)} · `
+              : ""}
+            not legal advice
+          </MessageFooter>
+        )}
+      </MessageContent>
+    </MessageRow>
   );
 }
