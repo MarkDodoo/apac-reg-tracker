@@ -315,9 +315,84 @@ export interface AskAgentProps {
   /** A document the user came from — pinned to the transcript and sent with
    *  every question so the agent grounds its answer in that document. */
   initialContext?: ChatContext;
+  /** Thread id when opened at /ask/[id] — restores that saved conversation. */
+  initialThreadId?: string;
 }
 
-export function AskAgent({ initialContext }: AskAgentProps = {}) {
+const TITLE_STOP = new Set([
+  "a",
+  "an",
+  "the",
+  "of",
+  "in",
+  "on",
+  "to",
+  "do",
+  "does",
+  "did",
+  "is",
+  "are",
+  "be",
+  "what",
+  "whats",
+  "how",
+  "why",
+  "when",
+  "where",
+  "which",
+  "who",
+  "can",
+  "could",
+  "would",
+  "should",
+  "will",
+  "there",
+  "any",
+  "some",
+  "other",
+  "that",
+  "this",
+  "these",
+  "those",
+  "for",
+  "and",
+  "or",
+  "with",
+  "about",
+  "around",
+  "into",
+  "from",
+  "i",
+  "my",
+  "me",
+  "we",
+  "our",
+  "us",
+  "you",
+  "your",
+  "singapore",
+  "sg",
+]);
+
+/** Derive a short, scannable 3-5 word title from the first question. */
+function shortTitle(question: string): string {
+  const words = question
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const key = words.filter((w) => w.length > 1 && !TITLE_STOP.has(w));
+  const picked = (key.length >= 2 ? key : words).slice(0, 5);
+  const title = picked
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+  return (title || question.trim()).slice(0, 60) || "Untitled";
+}
+
+export function AskAgent({
+  initialContext,
+  initialThreadId,
+}: AskAgentProps = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -592,6 +667,13 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
         phase: "starting",
       };
       setMessages((m) => [...m, userMsg, assistantMsg]);
+      if (
+        messagesRef.current.length === 0 &&
+        typeof window !== "undefined" &&
+        window.location.pathname === "/ask"
+      ) {
+        window.history.replaceState(null, "", `/ask/${threadIdRef.current}`);
+      }
       clearDraft();
       setInput("");
       setBusy(true);
@@ -774,12 +856,13 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
   // ── Saved threads: autosave each turn + resume from History ───────────
   const threadIdRef = useRef<string>("");
   const runIdRef = useRef<string | null>(null);
-  if (!threadIdRef.current) threadIdRef.current = crypto.randomUUID();
+  if (!threadIdRef.current)
+    threadIdRef.current = initialThreadId ?? crypto.randomUUID();
 
   // Reconnect to a DO-hosted run still going after the user navigated away.
   const reconnectedRef = useRef(false);
   useEffect(() => {
-    if (reconnectedRef.current || !isSignedIn) return;
+    if (reconnectedRef.current || !isSignedIn || initialThreadId) return;
     reconnectedRef.current = true;
     if (messagesRef.current.length > 0) return;
     try {
@@ -799,7 +882,7 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
     } catch {
       // ignore reconnect failures
     }
-  }, [isSignedIn]);
+  }, [isSignedIn, initialThreadId]);
 
   // Autosave the thread shortly after each turn settles (signed-in only).
   useEffect(() => {
@@ -809,9 +892,9 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
         m.role === "assistant" && (m.text.length > 0 || m.phase === "error"),
     );
     if (!hasAnswer) return;
-    const title = (
-      messages.find((m) => m.role === "user")?.text ?? "Untitled"
-    ).slice(0, 120);
+    const title = shortTitle(
+      messages.find((m) => m.role === "user")?.text ?? "",
+    );
     const persisted = messages.map((m) => ({
       id: m.id,
       role: m.role,
@@ -854,6 +937,9 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
     setInput("");
     clearQueuedPrompt();
     threadIdRef.current = crypto.randomUUID();
+    if (typeof window !== "undefined" && window.location.pathname !== "/ask") {
+      window.history.replaceState(null, "", "/ask");
+    }
     runIdRef.current = null;
     try {
       sessionStorage.removeItem("ask:activeRun");
@@ -901,6 +987,15 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
       // ignore load failures
     }
   }, []);
+
+  // Opened at /ask/[id]: restore that saved conversation on mount.
+  const loadedThreadRef = useRef(false);
+  useEffect(() => {
+    if (loadedThreadRef.current || !initialThreadId) return;
+    loadedThreadRef.current = true;
+    threadIdRef.current = initialThreadId;
+    void loadThread(initialThreadId);
+  }, [initialThreadId, loadThread]);
   const pinnedChip = pinnedContext ? (
     <div className="relative mb-4 rounded-xl border border-border bg-surface-2/60 pr-11 transition-colors hover:border-border-strong hover:bg-surface-2">
       <Link
@@ -1039,7 +1134,13 @@ export function AskAgent({ initialContext }: AskAgentProps = {}) {
           open={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           activeId={threadIdRef.current}
-          onResume={loadThread}
+          busyId={busy ? threadIdRef.current : null}
+          onResume={(id) => {
+            void loadThread(id);
+            if (typeof window !== "undefined") {
+              window.history.replaceState(null, "", `/ask/${id}`);
+            }
+          }}
           onNewChat={newChat}
         />
       )}
@@ -1169,17 +1270,24 @@ function ThreadSidebar({
   open,
   onClose,
   activeId,
+  busyId,
   onResume,
   onNewChat,
 }: {
   open: boolean;
   onClose: () => void;
   activeId: string;
+  busyId: string | null;
   onResume: (id: string) => void;
   onNewChat: () => void;
 }) {
   const [items, setItems] = useState<ThreadListItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? items.filter((t) => (t.title || "").toLowerCase().includes(q))
+    : items;
 
   useEffect(() => {
     if (!open) return;
@@ -1251,6 +1359,17 @@ function ThreadSidebar({
             New chat
           </button>
         </div>
+        {items.length > 0 && (
+          <div className="px-2 pt-2">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search threads…"
+              className="w-full rounded-lg border border-border bg-surface-2/50 px-3 py-1.5 text-[13px] text-foreground outline-none transition-colors placeholder:text-muted-2 focus:border-border-strong focus:bg-background"
+            />
+          </div>
+        )}
         <div className="thin-scroll mt-2 flex-1 overflow-y-auto px-2 pb-3">
           {loading ? (
             <p className="px-2 py-3 text-xs text-muted-2">Loading…</p>
@@ -1258,9 +1377,13 @@ function ThreadSidebar({
             <p className="px-2 py-3 text-xs text-muted-2">
               No saved threads yet.
             </p>
+          ) : filtered.length === 0 ? (
+            <p className="px-2 py-3 text-xs text-muted-2">
+              No threads match “{query.trim()}”.
+            </p>
           ) : (
             <div className="flex flex-col gap-0.5">
-              {items.map((t) => (
+              {filtered.map((t) => (
                 <div
                   key={t.id}
                   className={`group flex items-center gap-1 rounded-lg ${
@@ -1271,13 +1394,21 @@ function ThreadSidebar({
                     type="button"
                     onClick={() => onResume(t.id)}
                     title={t.title}
-                    className={`min-w-0 flex-1 truncate px-2.5 py-2 text-left text-[13px] ${
+                    className={`flex min-w-0 flex-1 flex-col gap-0.5 px-2.5 py-2 text-left ${
                       t.id === activeId
                         ? "font-medium text-accent"
                         : "text-muted"
                     }`}
                   >
-                    {t.title || "Untitled"}
+                    <span className="truncate text-[13px]">
+                      {t.title || "Untitled"}
+                    </span>
+                    {t.id === busyId && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-accent">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+                        researching…
+                      </span>
+                    )}
                   </button>
                   <button
                     type="button"
