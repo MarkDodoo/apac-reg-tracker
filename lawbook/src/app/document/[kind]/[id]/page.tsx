@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { DocumentBody } from "@/components/DocumentBody";
 import { EmptyState } from "@/components/EmptyState";
 import { ArrowLeftIcon, ExternalLinkIcon } from "@/components/icons";
+import { RecentlyViewedRecorder } from "@/components/RecentlyViewedRecorder";
 import { SelectionTools } from "@/components/SelectionTools";
 import { Snippet } from "@/components/Snippet";
 import {
@@ -110,6 +111,12 @@ export default async function DocumentResultPage({
 
   return (
     <>
+      <RecentlyViewedRecorder
+        docType={decodedKind as "hansard" | "bills" | "subsidiary" | "practice"}
+        docId={decodedId}
+        title={displayTitle}
+        path={pagePath}
+      />
       {detail && (
         <script
           type="application/ld+json"

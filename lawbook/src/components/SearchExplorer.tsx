@@ -240,24 +240,39 @@ export function SearchExplorer({
     };
   }, [q, tab, filters]);
 
+  const loadRecentSearches = useCallback(
+    async ({ clearOnError = true }: { clearOnError?: boolean } = {}) => {
+      const res = await fetch("/api/search-history?limit=5").catch(() => null);
+      if (!res?.ok) {
+        if (clearOnError) setRecentSearches([]);
+        return;
+      }
+      const payload = (await res.json().catch(() => null)) as {
+        searches?: SearchHistoryEntry[];
+      } | null;
+      setRecentSearches(payload?.searches ?? []);
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!isSignedIn) {
       setRecentSearches([]);
       return;
     }
     let cancelled = false;
-    fetch("/api/search-history?limit=5")
-      .then(async (res) =>
-        res.ok
-          ? ((await res.json()) as { searches?: SearchHistoryEntry[] })
-          : null,
-      )
-      .then((payload) => {
-        if (!cancelled) setRecentSearches(payload?.searches ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setRecentSearches([]);
-      });
+    void (async () => {
+      const res = await fetch("/api/search-history?limit=5").catch(() => null);
+      if (cancelled) return;
+      if (!res?.ok) {
+        setRecentSearches([]);
+        return;
+      }
+      const payload = (await res.json().catch(() => null)) as {
+        searches?: SearchHistoryEntry[];
+      } | null;
+      if (!cancelled) setRecentSearches(payload?.searches ?? []);
+    })();
     return () => {
       cancelled = true;
     };
@@ -301,15 +316,16 @@ export function SearchExplorer({
       return;
     }
 
-    const searchesRes = await fetch("/api/search-history?limit=5").catch(
-      () => null,
-    );
-    if (!searchesRes?.ok) return;
-    const searches = (await searchesRes.json().catch(() => null)) as {
-      searches?: SearchHistoryEntry[];
-    } | null;
-    setRecentSearches(searches?.searches ?? []);
-  }, [isSignedIn, data, error, tab, filters, currentSnapshot]);
+    await loadRecentSearches({ clearOnError: false });
+  }, [
+    isSignedIn,
+    data,
+    error,
+    tab,
+    filters,
+    currentSnapshot,
+    loadRecentSearches,
+  ]);
 
   return (
     <section className="w-full">
@@ -393,14 +409,20 @@ export function SearchExplorer({
                   <button
                     type="button"
                     aria-label={`Remove recent search: ${entry.query}`}
-                    onClick={() => {
-                      fetch(
-                        `/api/search-history/${encodeURIComponent(entry.id)}`,
-                        { method: "DELETE" },
-                      ).catch(() => undefined);
+                    onClick={async () => {
+                      const previousSearches = recentSearches;
                       setRecentSearches((searches) =>
                         searches.filter((search) => search.id !== entry.id),
                       );
+                      const res = await fetch(
+                        `/api/search-history/${encodeURIComponent(entry.id)}`,
+                        { method: "DELETE" },
+                      ).catch(() => null);
+                      if (!res?.ok) {
+                        setRecentSearches(previousSearches);
+                        return;
+                      }
+                      await loadRecentSearches({ clearOnError: false });
                     }}
                     className="mr-2 rounded-full p-1.5 text-muted-2 opacity-70 transition-colors hover:bg-surface-2 hover:text-foreground group-hover:opacity-100"
                   >

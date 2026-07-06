@@ -8,9 +8,7 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
-  "routes": [
-    { "pattern": "lawplain.com", "custom_domain": true }
-  ],
+  "routes": [{ "pattern": "lawplain.com", "custom_domain": true }],
   "vars": {
     "BETTER_AUTH_URL": "https://lawplain.com"
   },

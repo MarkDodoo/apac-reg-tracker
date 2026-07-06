@@ -8,6 +8,7 @@ import {
   ExternalLinkIcon,
   SparkleIcon,
 } from "@/components/icons";
+import { RecentlyViewedRecorder } from "@/components/RecentlyViewedRecorder";
 import { SavedAuthorityButton } from "@/components/SavedAuthorityButton";
 import { SelectionTools } from "@/components/SelectionTools";
 import { StatuteSectionShell } from "@/components/StatuteSectionShell";
@@ -176,6 +177,12 @@ export default async function StatutePage({
 
   return (
     <>
+      <RecentlyViewedRecorder
+        docType="statute"
+        docId={decoded}
+        title={title}
+        path={pagePath}
+      />
       <script
         type="application/ld+json"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is serialized with JSON.stringify and escaped in jsonLdScriptProps.

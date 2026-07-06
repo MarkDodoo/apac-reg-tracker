@@ -8,6 +8,7 @@ import {
   SparkleIcon,
 } from "@/components/icons";
 import { JudgmentBody } from "@/components/JudgmentBody";
+import { RecentlyViewedRecorder } from "@/components/RecentlyViewedRecorder";
 import { SavedAuthorityButton } from "@/components/SavedAuthorityButton";
 import { SelectionTools } from "@/components/SelectionTools";
 import {
@@ -140,6 +141,12 @@ export default async function JudgmentPage({
 
   return (
     <>
+      <RecentlyViewedRecorder
+        docType="judgment"
+        docId={decoded}
+        title={title}
+        path={pagePath}
+      />
       <script
         type="application/ld+json"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is serialized with JSON.stringify and escaped in jsonLdScriptProps.

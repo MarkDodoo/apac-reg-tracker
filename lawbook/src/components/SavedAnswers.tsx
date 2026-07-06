@@ -34,6 +34,9 @@ export function SavedAnswers() {
   const { data: session } = authClient.useSession();
   const [answers, setAnswers] = useState<SavedAnswer[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [expandedAnswerIds, setExpandedAnswerIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   useEffect(() => {
     if (!session?.user) return;
@@ -91,6 +94,15 @@ export function SavedAnswers() {
     URL.revokeObjectURL(url);
   }
 
+  function toggleExpanded(id: string) {
+    setExpandedAnswerIds((ids) => {
+      const next = new Set(ids);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   const act =
     "rounded-md px-2 py-1 text-xs font-medium text-muted-2 transition-colors hover:bg-surface-2 hover:text-foreground";
 
@@ -115,51 +127,69 @@ export function SavedAnswers() {
         </div>
       ) : (
         <ul className="space-y-3">
-          {answers.map((a) => (
-            <li
-              key={a.id}
-              className="relative rounded-xl border border-border bg-background p-4 pr-10"
-            >
-              <p className="font-serif text-base font-medium leading-snug text-foreground">
-                {a.question}
-              </p>
-              <p className="mt-1.5 line-clamp-3 text-sm leading-relaxed text-muted">
-                {a.answer.replace(/[#*_`>[\]]/g, "").slice(0, 320)}
-              </p>
-              <div className="mt-2.5 flex flex-wrap items-center gap-1 text-xs text-muted-2">
-                <span>Saved {formatDate(a.createdAt)}</span>
-                <span className="mx-1 text-border-strong">·</span>
-                <button
-                  type="button"
-                  className={act}
-                  onClick={() => copy(a.answer)}
-                >
-                  Copy
-                </button>
-                <button
-                  type="button"
-                  className={act}
-                  onClick={() => exportMd(a)}
-                >
-                  Export .md
-                </button>
-                {a.sourceHref && (
-                  <Link href={a.sourceHref} className={act}>
-                    Open source
-                  </Link>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => void remove(a.id)}
-                aria-label="Delete saved answer"
-                title="Delete"
-                className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-2 transition-colors hover:bg-border hover:text-foreground"
+          {answers.map((a) => {
+            const expanded = expandedAnswerIds.has(a.id);
+            const answerId = `saved-answer-${a.id}`;
+            return (
+              <li
+                key={a.id}
+                className="relative rounded-xl border border-border bg-background p-4 pr-10"
               >
-                <XIcon className="h-4 w-4" />
-              </button>
-            </li>
-          ))}
+                <p className="font-serif text-base font-medium leading-snug text-foreground">
+                  {a.question}
+                </p>
+                <p
+                  id={answerId}
+                  className={`mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-muted ${expanded ? "" : "line-clamp-3"}`}
+                >
+                  {expanded
+                    ? a.answer
+                    : a.answer.replace(/[#*_`>[\]]/g, "").slice(0, 320)}
+                </p>
+                <div className="mt-2.5 flex flex-wrap items-center gap-1 text-xs text-muted-2">
+                  <span>Saved {formatDate(a.createdAt)}</span>
+                  <span className="mx-1 text-border-strong">·</span>
+                  <button
+                    type="button"
+                    className={act}
+                    aria-expanded={expanded}
+                    aria-controls={answerId}
+                    onClick={() => toggleExpanded(a.id)}
+                  >
+                    {expanded ? "Hide full answer" : "Read full answer"}
+                  </button>
+                  <button
+                    type="button"
+                    className={act}
+                    onClick={() => copy(a.answer)}
+                  >
+                    Copy
+                  </button>
+                  <button
+                    type="button"
+                    className={act}
+                    onClick={() => exportMd(a)}
+                  >
+                    Export .md
+                  </button>
+                  {a.sourceHref && (
+                    <Link href={a.sourceHref} className={act}>
+                      Open source
+                    </Link>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void remove(a.id)}
+                  aria-label="Delete saved answer"
+                  title="Delete"
+                  className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-2 transition-colors hover:bg-border hover:text-foreground"
+                >
+                  <XIcon className="h-4 w-4" />
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>
