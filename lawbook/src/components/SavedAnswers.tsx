@@ -121,9 +121,16 @@ export function SavedAnswers() {
         <div className="rounded-xl border border-dashed border-border-strong p-5 text-sm text-muted">
           <p className="font-medium text-foreground">No saved answers yet.</p>
           <p className="mt-1">
-            Ask Lawplain a question, then use <strong>Save</strong> on an
-            answer.
+            Ask Lawplain a question, then use Save on an answer.
           </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link
+              href="/ask"
+              className="rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent"
+            >
+              Ask Lawplain
+            </Link>
+          </div>
         </div>
       ) : (
         <ul className="space-y-3">
