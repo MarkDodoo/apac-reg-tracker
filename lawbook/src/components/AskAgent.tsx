@@ -493,6 +493,59 @@ function latestAssistantMessage(messages: Message[]): Message | undefined {
   return [...messages].reverse().find((m) => m.role === "assistant");
 }
 
+function collapseDuplicateRunningTurns(messages: Message[]): Message[] {
+  const pairs = messages
+    .map((message, index) => {
+      const user = messages[index - 1];
+      return isLiveAssistant(message) && user?.role === "user"
+        ? {
+            assistant: message,
+            assistantIndex: index,
+            user,
+            userIndex: index - 1,
+          }
+        : null;
+    })
+    .filter((pair): pair is NonNullable<typeof pair> => Boolean(pair));
+
+  const duplicateQuestions = new Set<string>();
+  const pairCounts = new Map<string, number>();
+  for (const pair of pairs) {
+    const question = pair.user.text.trim();
+    if (!question) continue;
+    const count = (pairCounts.get(question) ?? 0) + 1;
+    pairCounts.set(question, count);
+    if (count > 1) duplicateQuestions.add(question);
+  }
+  if (duplicateQuestions.size === 0) return messages;
+
+  const remove = new Set<number>();
+  for (const question of duplicateQuestions) {
+    const duplicates = pairs.filter(
+      (pair) => pair.user.text.trim() === question,
+    );
+    const keep = duplicates.reduce((best, pair) => {
+      const score =
+        (pair.assistant.eventCursor ?? 0) * 1000 +
+        pair.assistant.tools.length * 20 +
+        pair.assistant.progress.length;
+      const bestScore =
+        (best.assistant.eventCursor ?? 0) * 1000 +
+        best.assistant.tools.length * 20 +
+        best.assistant.progress.length;
+      return score >= bestScore ? pair : best;
+    });
+    for (const pair of duplicates) {
+      if (pair !== keep) {
+        remove.add(pair.userIndex);
+        remove.add(pair.assistantIndex);
+      }
+    }
+  }
+
+  return messages.filter((_, index) => !remove.has(index));
+}
+
 export function AskAgent({
   initialContext,
   initialThreadId,
@@ -514,6 +567,12 @@ export function AskAgent({
   >([]);
   const [busy, setBusy] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeThreadId, setActiveThreadId] = useState(
+    () => initialThreadId ?? crypto.randomUUID(),
+  );
+  const [threadListVersion, setThreadListVersion] = useState(0);
+  const [optimisticThread, setOptimisticThread] =
+    useState<ThreadListItem | null>(null);
   const { setHideFooter } = useChrome();
   const [queuedPrompt, setQueuedPrompt] = useState<string | null>(null);
   const [pinnedContext, setPinnedContext] = useState(initialContext);
@@ -537,6 +596,7 @@ export function AskAgent({
   const msgId = useRef(0);
   const toolId = useRef(0);
   const messagesRef = useRef<Message[]>([]);
+  const deletedThreadIdsRef = useRef<Set<string>>(new Set());
   messagesRef.current = messages;
   useEffect(() => {
     setHideFooter(messages.length > 0);
@@ -583,6 +643,10 @@ export function AskAgent({
   const resetHistoryNavigation = useCallback(() => {
     historyIndexRef.current = -1;
     draftBeforeHistoryRef.current = "";
+  }, []);
+
+  const refreshThreadList = useCallback(() => {
+    setThreadListVersion((version) => version + 1);
   }, []);
 
   useEffect(() => {
@@ -928,6 +992,14 @@ export function AskAgent({
             phase: "starting",
           };
       if (!reuseRunningAssistant) {
+        if (messagesRef.current.length === 0) {
+          setOptimisticThread({
+            id: threadIdRef.current,
+            title: shortTitle(q),
+            updatedAt: Date.now(),
+            status: "running",
+          });
+        }
         stickToBottomRef.current = true;
         setMessages((m) => [...m, userMsg, assistantMsg]);
       }
@@ -959,7 +1031,12 @@ export function AskAgent({
         try {
           sessionStorage.setItem(
             "ask:activeRun",
-            JSON.stringify({ runId, question: q, startedAt }),
+            JSON.stringify({
+              runId,
+              question: q,
+              startedAt,
+              threadId: threadIdRef.current,
+            }),
           );
         } catch {
           // sessionStorage may be unavailable
@@ -968,6 +1045,7 @@ export function AskAgent({
         // (and reconnect to the live run) while it's still researching — not
         // only once it settles. Fresh runs only; reconnects already exist.
         if (isSignedIn && !resumeRunId) {
+          const saveThreadId = threadIdRef.current;
           const runningTranscript = serializeMessages([
             ...messagesRef.current,
             userMsg,
@@ -976,20 +1054,28 @@ export function AskAgent({
           const startTitle = shortTitle(
             messagesRef.current.find((m) => m.role === "user")?.text ?? q,
           );
-          await fetch("/api/ask-threads", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              id: threadIdRef.current,
-              title: startTitle,
-              messages: runningTranscript,
-              cite: pinnedContext?.citation,
-              kind: pinnedContext?.kind,
-              sourceHref: pinnedContext?.href,
-              runId,
-              status: "running",
-            }),
-          }).catch(() => {});
+          if (!deletedThreadIdsRef.current.has(saveThreadId)) {
+            await fetch("/api/ask-threads", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                id: saveThreadId,
+                title: startTitle,
+                messages: runningTranscript,
+                cite: pinnedContext?.citation,
+                kind: pinnedContext?.kind,
+                sourceHref: pinnedContext?.href,
+                runId,
+                status: "running",
+              }),
+            })
+              .then((res) => {
+                if (res.ok && !deletedThreadIdsRef.current.has(saveThreadId)) {
+                  refreshThreadList();
+                }
+              })
+              .catch(() => {});
+          }
         }
         const res = await fetch("/api/ask", {
           method: "POST",
@@ -1076,14 +1162,55 @@ export function AskAgent({
                 });
                 break;
               }
-              case "done":
+              case "done": {
                 queueingOpenRef.current = false;
-                patch((m) => ({
-                  ...m,
-                  text: ev.text || acc,
-                  phase: "done",
-                  cost: { usd: ev.costUsd, tokens: ev.contextTokens },
-                }));
+                let finalSnapshot: Message[] = [];
+                setMessages((ms) => {
+                  finalSnapshot = ms.map((m) =>
+                    m.id === aId
+                      ? {
+                          ...m,
+                          text: ev.text || acc,
+                          phase: "done",
+                          cost: { usd: ev.costUsd, tokens: ev.contextTokens },
+                        }
+                      : m,
+                  );
+                  messagesRef.current = finalSnapshot;
+                  return finalSnapshot;
+                });
+                const finalThreadId = threadIdRef.current;
+                const finalTitle = shortTitle(
+                  finalSnapshot.find((m) => m.role === "user")?.text ?? q,
+                );
+                setOptimisticThread({
+                  id: finalThreadId,
+                  title: finalTitle,
+                  updatedAt: Date.now(),
+                  status: "done",
+                });
+                if (
+                  isSignedIn &&
+                  !deletedThreadIdsRef.current.has(finalThreadId)
+                ) {
+                  void fetch("/api/ask-threads", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({
+                      id: finalThreadId,
+                      title: finalTitle,
+                      messages: serializeMessages(finalSnapshot),
+                      cite: pinnedContext?.citation,
+                      kind: pinnedContext?.kind,
+                      sourceHref: pinnedContext?.href,
+                      status: "done",
+                    }),
+                  })
+                    .then((res) => {
+                      if (res.ok) refreshThreadList();
+                    })
+                    .catch(() => {});
+                }
                 try {
                   sessionStorage.removeItem("ask:activeRun");
                 } catch {
@@ -1091,6 +1218,7 @@ export function AskAgent({
                 }
                 await reader.cancel().catch(() => {});
                 return;
+              }
               case "error":
                 queueingOpenRef.current = false;
                 patch((m) => ({ ...m, phase: "error", error: ev.message }));
@@ -1139,6 +1267,7 @@ export function AskAgent({
       isSignedIn,
       pinnedContext,
       queuePrompt,
+      refreshThreadList,
       resetHistoryNavigation,
       sessionPending,
     ],
@@ -1166,8 +1295,7 @@ export function AskAgent({
   const threadIdRef = useRef<string>("");
   const runIdRef = useRef<string | null>(null);
   const creatingNewChatRef = useRef(false);
-  if (!threadIdRef.current)
-    threadIdRef.current = initialThreadId ?? crypto.randomUUID();
+  if (!threadIdRef.current) threadIdRef.current = activeThreadId;
 
   const persistThreadSnapshot = useCallback(
     async (
@@ -1176,6 +1304,9 @@ export function AskAgent({
     ): Promise<boolean> => {
       if (!isSignedIn || snapshot.length === 0) return true;
       if (!snapshot.some((m) => m.role === "user")) return true;
+
+      const threadId = threadIdRef.current;
+      if (deletedThreadIdsRef.current.has(threadId)) return true;
 
       const latestAssistant = latestAssistantMessage(snapshot);
       const running = latestAssistant
@@ -1193,7 +1324,7 @@ export function AskAgent({
           headers: { "content-type": "application/json" },
           keepalive: options.keepalive,
           body: JSON.stringify({
-            id: threadIdRef.current,
+            id: threadId,
             title: shortTitle(
               snapshot.find((m) => m.role === "user")?.text ?? "",
             ),
@@ -1205,24 +1336,22 @@ export function AskAgent({
             status,
           }),
         });
+        if (res.ok) refreshThreadList();
         return res.ok;
       } catch {
         return false;
       }
     },
-    [isSignedIn, pinnedContext],
+    [isSignedIn, pinnedContext, refreshThreadList],
   );
 
-  const flushRunningThread = useCallback(() => {
-    const snapshot = messagesRef.current;
-    const latestAssistant = latestAssistantMessage(snapshot);
-    if (!latestAssistant || !isLiveAssistant(latestAssistant)) return;
-    void persistThreadSnapshot(snapshot, { keepalive: true });
+  const flushThread = useCallback(() => {
+    void persistThreadSnapshot(messagesRef.current, { keepalive: true });
   }, [persistThreadSnapshot]);
 
   useEffect(() => {
-    return () => flushRunningThread();
-  }, [flushRunningThread]);
+    return () => flushThread();
+  }, [flushThread]);
 
   // Reconnect to a DO-hosted run still going after the user navigated away.
   const reconnectedRef = useRef(false);
@@ -1237,11 +1366,19 @@ export function AskAgent({
         runId?: string;
         question?: string;
         startedAt?: number;
+        threadId?: string;
       };
       if (!ar.runId || !ar.question) return;
       if (Date.now() - (ar.startedAt ?? 0) > 6 * 60 * 1000) {
         sessionStorage.removeItem("ask:activeRun");
         return;
+      }
+      if (ar.threadId) {
+        threadIdRef.current = ar.threadId;
+        setActiveThreadId(ar.threadId);
+        if (window.location.pathname === "/ask") {
+          window.history.replaceState(null, "", `/ask/${ar.threadId}`);
+        }
       }
       void sendRef.current?.(ar.question, ar.runId);
     } catch {
@@ -1268,7 +1405,14 @@ export function AskAgent({
         ? "stopped"
         : "done";
     const id = threadIdRef.current;
+    if (deletedThreadIdsRef.current.has(id)) return;
     const runId = running ? (runIdRef.current ?? undefined) : undefined;
+    setOptimisticThread((current) =>
+      current?.id === id &&
+      (current.title !== title || current.status !== status)
+        ? { ...current, title, status, updatedAt: Date.now() }
+        : current,
+    );
     const timer = window.setTimeout(
       () => {
         void fetch("/api/ask-threads", {
@@ -1284,14 +1428,62 @@ export function AskAgent({
             runId,
             status,
           }),
-        }).catch(() => {
-          // best-effort autosave
-        });
+        })
+          .then((res) => {
+            if (res.ok && !running) refreshThreadList();
+          })
+          .catch(() => {
+            // best-effort autosave
+          });
       },
       running ? 1200 : 300,
     );
     return () => window.clearTimeout(timer);
-  }, [messages, isSignedIn, pinnedContext]);
+  }, [messages, isSignedIn, pinnedContext, refreshThreadList]);
+
+  const resetChatState = useCallback(
+    (options: { createPlaceholder?: boolean } = {}) => {
+      const { createPlaceholder = false } = options;
+      queuedPromptRef.current = null;
+      pendingSendAfterCleanupRef.current = null;
+      queueingOpenRef.current = false;
+      activeRef.current = false;
+      abortRef.current?.abort();
+      abortRef.current = null;
+      setBusy(false);
+      messagesRef.current = [];
+      setMessages([]);
+      clearDraft();
+      setInput("");
+      clearQueuedPrompt();
+      const nextThreadId = crypto.randomUUID();
+      threadIdRef.current = nextThreadId;
+      setActiveThreadId(nextThreadId);
+      setOptimisticThread(
+        createPlaceholder
+          ? {
+              id: nextThreadId,
+              title: "New Chat",
+              updatedAt: Date.now(),
+              status: null,
+            }
+          : null,
+      );
+      if (
+        typeof window !== "undefined" &&
+        window.location.pathname !== "/ask"
+      ) {
+        window.history.replaceState(null, "", "/ask");
+      }
+      runIdRef.current = null;
+      try {
+        sessionStorage.removeItem("ask:activeRun");
+      } catch {
+        /* ignore */
+      }
+    },
+    [clearDraft, clearQueuedPrompt],
+  );
 
   const newChat = useCallback(async () => {
     if (creatingNewChatRef.current) return;
@@ -1312,37 +1504,27 @@ export function AskAgent({
 
       // Detach this UI stream only. Durable Object-backed research keeps running
       // in the background; explicit Stop is the only path that cancels backend work.
-      queuedPromptRef.current = null;
-      pendingSendAfterCleanupRef.current = null;
-      queueingOpenRef.current = false;
-      activeRef.current = false;
-      abortRef.current?.abort();
-      setBusy(false);
-      setMessages([]);
-      clearDraft();
-      setInput("");
-      clearQueuedPrompt();
-      threadIdRef.current = crypto.randomUUID();
-      if (
-        typeof window !== "undefined" &&
-        window.location.pathname !== "/ask"
-      ) {
-        window.history.replaceState(null, "", "/ask");
-      }
-      runIdRef.current = null;
-      try {
-        sessionStorage.removeItem("ask:activeRun");
-      } catch {
-        /* ignore */
-      }
+      resetChatState({ createPlaceholder: true });
+      setSidebarOpen(true);
     } finally {
       creatingNewChatRef.current = false;
     }
-  }, [clearDraft, clearQueuedPrompt, persistThreadSnapshot]);
+  }, [persistThreadSnapshot, resetChatState]);
+
+  const deleteActiveChat = useCallback(
+    (id: string) => {
+      if (id !== threadIdRef.current) return;
+      deletedThreadIdsRef.current.add(id);
+      stopBackendRun(runIdRef.current, id);
+      resetChatState({ createPlaceholder: false });
+      setSidebarOpen(true);
+    },
+    [resetChatState],
+  );
 
   const loadThread = useCallback(
     async (threadId: string) => {
-      flushRunningThread();
+      flushThread();
       try {
         const res = await fetch(
           `/api/ask-threads?id=${encodeURIComponent(threadId)}`,
@@ -1368,23 +1550,31 @@ export function AskAgent({
           };
         };
         const raw = data.thread?.messages ?? [];
-        const loaded: Message[] = raw.map((m, i) => ({
-          id: typeof m.id === "number" ? m.id : i,
-          role: m.role === "user" ? "user" : "assistant",
-          text: typeof m.text === "string" ? m.text : "",
-          tools: Array.isArray(m.tools) ? m.tools : [],
-          progress: Array.isArray(m.progress) ? m.progress : [],
-          phase: m.phase ?? "done",
-          startedAt: typeof m.startedAt === "number" ? m.startedAt : undefined,
-          elapsedMs: typeof m.elapsedMs === "number" ? m.elapsedMs : undefined,
-          eventCursor:
-            typeof m.eventCursor === "number" ? m.eventCursor : undefined,
-          cost: m.cost,
-          error: m.error,
-        }));
+        const loaded = collapseDuplicateRunningTurns(
+          raw.map(
+            (m, i): Message => ({
+              id: typeof m.id === "number" ? m.id : i,
+              role: m.role === "user" ? "user" : "assistant",
+              text: typeof m.text === "string" ? m.text : "",
+              tools: Array.isArray(m.tools) ? m.tools : [],
+              progress: Array.isArray(m.progress) ? m.progress : [],
+              phase: m.phase ?? "done",
+              startedAt:
+                typeof m.startedAt === "number" ? m.startedAt : undefined,
+              elapsedMs:
+                typeof m.elapsedMs === "number" ? m.elapsedMs : undefined,
+              eventCursor:
+                typeof m.eventCursor === "number" ? m.eventCursor : undefined,
+              cost: m.cost,
+              error: m.error,
+            }),
+          ),
+        );
         abortRef.current?.abort();
         msgId.current = loaded.reduce((mx, m) => Math.max(mx, m.id), 0) + 1;
         threadIdRef.current = threadId;
+        setActiveThreadId(threadId);
+        setOptimisticThread(null);
 
         // Still researching? Show the persisted in-flight transcript immediately,
         // then reconnect to the same run. Newer rows include the assistant
@@ -1399,6 +1589,7 @@ export function AskAgent({
             const user = [...loaded]
               .reverse()
               .find((m) => m.role === "user" && m.text.trim());
+            messagesRef.current = loaded;
             setMessages(loaded);
             if (user) {
               window.setTimeout(() => {
@@ -1408,20 +1599,23 @@ export function AskAgent({
             return;
           }
           if (last?.role === "user") {
+            const visibleMessages = loaded.slice(0, -1);
             setBusy(true);
-            setMessages(loaded.slice(0, -1));
+            messagesRef.current = visibleMessages;
+            setMessages(visibleMessages);
             void sendRef.current?.(last.text, runId);
             return;
           }
         }
 
         setBusy(false);
+        messagesRef.current = loaded;
         setMessages(loaded);
       } catch {
         // ignore load failures
       }
     },
-    [flushRunningThread],
+    [flushThread],
   );
 
   // Opened at /ask/[id]: restore that saved conversation on mount.
@@ -1430,6 +1624,7 @@ export function AskAgent({
     if (loadedThreadRef.current || !initialThreadId) return;
     loadedThreadRef.current = true;
     threadIdRef.current = initialThreadId;
+    setActiveThreadId(initialThreadId);
     void loadThread(initialThreadId);
   }, [initialThreadId, loadThread]);
   const pinnedChip = pinnedContext ? (
@@ -1564,10 +1759,15 @@ export function AskAgent({
   );
 
   const latestAssistantForBusy = latestAssistantMessage(messages);
+  const activeThreadStatus = latestAssistantForBusy
+    ? isLiveAssistant(latestAssistantForBusy)
+      ? "running"
+      : latestAssistantForBusy.phase === "stopped"
+        ? "stopped"
+        : "done"
+    : null;
   const liveAssistantThreadId =
-    latestAssistantForBusy && isLiveAssistant(latestAssistantForBusy)
-      ? threadIdRef.current
-      : null;
+    activeThreadStatus === "running" ? activeThreadId : null;
 
   return (
     <div className="flex flex-col">
@@ -1575,22 +1775,29 @@ export function AskAgent({
         <ThreadSidebar
           open={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
-          activeId={threadIdRef.current}
+          activeId={activeThreadId}
+          activeStatus={activeThreadStatus}
           busyId={liveAssistantThreadId}
           onResume={(id) => {
+            threadIdRef.current = id;
+            setActiveThreadId(id);
             void loadThread(id);
             if (typeof window !== "undefined") {
               window.history.replaceState(null, "", `/ask/${id}`);
             }
           }}
           onNewChat={newChat}
+          onDeleteActive={deleteActiveChat}
+          refreshKey={threadListVersion}
+          optimisticThread={optimisticThread}
         />
       )}
       {isSignedIn && (
         <div className="mb-2 flex items-center justify-end gap-1">
           <button
             type="button"
-            onClick={() => setSidebarOpen(true)}
+            onClick={() => setSidebarOpen((open) => !open)}
+            aria-expanded={sidebarOpen}
             className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-2 transition-colors hover:bg-surface-2 hover:text-foreground"
           >
             <svg
@@ -1694,7 +1901,7 @@ export function AskAgent({
                     cite={pinnedContext?.citation}
                     kind={pinnedContext?.kind}
                     sourceHref={pinnedContext?.href}
-                    threadId={threadIdRef.current}
+                    threadId={activeThreadId}
                     messageId={m.id}
                     isSignedIn={isSignedIn}
                   />
@@ -1716,42 +1923,89 @@ interface ThreadListItem {
   title: string;
   updatedAt: number;
   status?: string | null;
+  unread?: boolean;
 }
 
 function ThreadSidebar({
   open,
   onClose,
   activeId,
+  activeStatus,
   busyId,
   onResume,
   onNewChat,
+  onDeleteActive,
+  refreshKey,
+  optimisticThread,
 }: {
   open: boolean;
   onClose: () => void;
   activeId: string;
+  activeStatus: "running" | "stopped" | "done" | null;
   busyId: string | null;
   onResume: (id: string) => void;
   onNewChat: () => void;
+  onDeleteActive: (id: string) => void;
+  refreshKey: number;
+  optimisticThread: ThreadListItem | null;
 }) {
   const [items, setItems] = useState<ThreadListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
+  const fetchSeqRef = useRef(0);
   const q = query.trim().toLowerCase();
-  const filtered = q
-    ? items.filter((t) => (t.title || "").toLowerCase().includes(q))
+  const allItems = optimisticThread
+    ? [
+        {
+          ...items.find((item) => item.id === optimisticThread.id),
+          ...optimisticThread,
+        },
+        ...items.filter((item) => item.id !== optimisticThread.id),
+      ]
     : items;
+  const filtered = q
+    ? allItems.filter(
+        (t) =>
+          t.id === optimisticThread?.id ||
+          (t.title || "").toLowerCase().includes(q),
+      )
+    : allItems;
 
   useEffect(() => {
+    if (optimisticThread) setQuery("");
+  }, [optimisticThread]);
+
+  useEffect(() => {
+    // refreshKey is intentionally read so parent saves can refetch an already-open sidebar.
+    void refreshKey;
     if (!open) return;
-    setLoading(true);
-    fetch("/api/ask-threads")
-      .then((r) => (r.ok ? r.json() : { threads: [] }))
-      .then((d) =>
-        setItems((d as { threads?: ThreadListItem[] }).threads ?? []),
-      )
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false));
-  }, [open]);
+
+    let cancelled = false;
+    const load = (showLoading: boolean) => {
+      const seq = fetchSeqRef.current + 1;
+      fetchSeqRef.current = seq;
+      if (showLoading) setLoading(true);
+      fetch("/api/ask-threads", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : { threads: [] }))
+        .then((d) => {
+          if (cancelled || fetchSeqRef.current !== seq) return;
+          setItems((d as { threads?: ThreadListItem[] }).threads ?? []);
+        })
+        .catch(() => {
+          if (!cancelled && fetchSeqRef.current === seq) setItems([]);
+        })
+        .finally(() => {
+          if (!cancelled && fetchSeqRef.current === seq) setLoading(false);
+        });
+    };
+
+    load(true);
+    const id = window.setInterval(() => load(false), 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [open, refreshKey]);
 
   useEffect(() => {
     if (!open) return;
@@ -1765,6 +2019,7 @@ function ThreadSidebar({
   async function remove(e: React.MouseEvent, id: string) {
     e.stopPropagation();
     setItems((xs) => xs.filter((x) => x.id !== id));
+    onDeleteActive(id);
     await fetch(`/api/ask-threads?id=${encodeURIComponent(id)}`, {
       method: "DELETE",
     }).catch(() => {});
@@ -1811,7 +2066,7 @@ function ThreadSidebar({
             New chat
           </button>
         </div>
-        {items.length > 0 && (
+        {allItems.length > 0 && (
           <div className="px-2 pt-2">
             <input
               type="search"
@@ -1823,9 +2078,9 @@ function ThreadSidebar({
           </div>
         )}
         <div className="thin-scroll mt-2 flex-1 overflow-y-auto px-2 pb-3">
-          {loading ? (
+          {loading && allItems.length === 0 ? (
             <p className="px-2 py-3 text-xs text-muted-2">Loading…</p>
-          ) : items.length === 0 ? (
+          ) : allItems.length === 0 ? (
             <p className="px-2 py-3 text-xs text-muted-2">
               No saved threads yet.
             </p>
@@ -1835,49 +2090,74 @@ function ThreadSidebar({
             </p>
           ) : (
             <div className="flex flex-col gap-0.5">
-              {filtered.map((t) => (
-                <div
-                  key={t.id}
-                  className={`group flex items-center gap-1 rounded-lg ${
-                    t.id === activeId ? "bg-accent-soft" : "hover:bg-surface-2"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => onResume(t.id)}
-                    title={t.title}
-                    className={`flex min-w-0 flex-1 flex-col gap-0.5 px-2.5 py-2 text-left ${
+              {filtered.map((t) => {
+                const status = t.id === activeId ? activeStatus : t.status;
+                const researching = status === "running" || t.id === busyId;
+                const unreadDone = !researching && t.unread;
+                return (
+                  <div
+                    key={t.id}
+                    className={`group flex items-center gap-1 rounded-lg ${
                       t.id === activeId
-                        ? "font-medium text-accent"
-                        : "text-muted"
+                        ? "bg-accent-soft"
+                        : "hover:bg-surface-2"
                     }`}
                   >
-                    <span className="truncate text-[13px]">
-                      {t.title || "Untitled"}
-                    </span>
-                    {t.id === busyId && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-accent">
-                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
-                        researching…
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setItems((xs) =>
+                          xs.map((x) =>
+                            x.id === t.id ? { ...x, unread: false } : x,
+                          ),
+                        );
+                        onResume(t.id);
+                      }}
+                      title={t.title}
+                      className={`flex min-w-0 flex-1 flex-col gap-0.5 px-2.5 py-2 text-left ${
+                        t.id === activeId
+                          ? "font-medium text-accent"
+                          : "text-muted"
+                      }`}
+                    >
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate text-[13px]">
+                          {t.title || "Untitled"}
+                        </span>
+                        {unreadDone && (
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+                        )}
                       </span>
-                    )}
-                    {t.id !== busyId && t.status === "stopped" && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-amber-700">
-                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                        exited
-                      </span>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => void remove(e, t.id)}
-                    aria-label="Delete thread"
-                    className="mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-2 opacity-0 transition hover:bg-border hover:text-foreground group-hover:opacity-100"
-                  >
-                    <XIcon className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))}
+                      {researching && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-accent">
+                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+                          researching…
+                        </span>
+                      )}
+                      {!researching && status === "stopped" && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-amber-700">
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                          exited
+                        </span>
+                      )}
+                      {unreadDone && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-accent">
+                          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+                          done
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => void remove(e, t.id)}
+                      aria-label="Delete thread"
+                      className="mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-2 opacity-0 transition hover:bg-border hover:text-foreground group-hover:opacity-100"
+                    >
+                      <XIcon className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

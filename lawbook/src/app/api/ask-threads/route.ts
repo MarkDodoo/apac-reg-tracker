@@ -1,13 +1,74 @@
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import {
   deleteThread,
   getThread,
   listThreads,
+  markThreadSeen,
   saveThread,
+  type ThreadSummary,
+  updateThreadRunStatus,
 } from "@/lib/ask-threads";
 import { getSession } from "@/lib/auth";
+import { getMemoryAskRunStatus } from "@/server/ask-run-memory";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const useSandbox = !!(
+  process.env.CUBESANDBOX_GATEWAY_URL && process.env.CUBESANDBOX_TENANT_KEY
+);
+
+type RunStatus = "running" | "done" | "error" | "stopped";
+
+async function getDurableRunStatus(runId: string): Promise<RunStatus | null> {
+  if (!useSandbox) return null;
+  try {
+    const { env } = await getCloudflareContext({ async: true });
+    const ns = (env as { ASK_RUN_DO?: DurableObjectNamespace }).ASK_RUN_DO;
+    if (!ns) return null;
+    const stub = ns.get(ns.idFromName(runId));
+    const res = await stub.fetch("https://ask-run-do/status");
+    if (!res.ok) return null;
+    const data = (await res.json()) as { status?: unknown };
+    return data.status === "running" ||
+      data.status === "done" ||
+      data.status === "error" ||
+      data.status === "stopped"
+      ? data.status
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function reconcileRunningThreads(
+  userId: string,
+  threads: ThreadSummary[],
+): Promise<ThreadSummary[]> {
+  return Promise.all(
+    threads.map(async (thread) => {
+      if (thread.status !== "running" || !thread.runId) return thread;
+      const runStatus =
+        (await getDurableRunStatus(thread.runId)) ??
+        getMemoryAskRunStatus(userId, thread.runId);
+      if (!runStatus || runStatus === "running") return thread;
+
+      const status = runStatus === "stopped" ? "stopped" : "done";
+      await updateThreadRunStatus({
+        userId,
+        id: thread.id,
+        status,
+        unread: status === "done",
+      }).catch(() => {});
+      return {
+        ...thread,
+        status,
+        unread: status === "done" ? true : thread.unread,
+        updatedAt: Date.now(),
+      };
+    }),
+  );
+}
 
 function clean(value: unknown, max: number): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -21,9 +82,14 @@ export async function GET(req: Request): Promise<Response> {
   if (id) {
     const thread = await getThread(session.user.id, id);
     if (!thread) return Response.json({ error: "Not found" }, { status: 404 });
-    return Response.json({ thread });
+    await markThreadSeen(session.user.id, id).catch(() => {});
+    return Response.json({ thread: { ...thread, unread: false } });
   }
-  return Response.json({ threads: await listThreads(session.user.id) });
+  const threads = await reconcileRunningThreads(
+    session.user.id,
+    await listThreads(session.user.id),
+  );
+  return Response.json({ threads });
 }
 
 export async function POST(req: Request): Promise<Response> {

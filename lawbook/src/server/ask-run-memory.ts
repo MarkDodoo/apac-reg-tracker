@@ -166,6 +166,13 @@ export function hasMemoryAskRun(userId: string, runId: string): boolean {
   return runs.has(runKey(userId, runId));
 }
 
+export function getMemoryAskRunStatus(
+  userId: string,
+  runId: string,
+): RunStatus | null {
+  return runs.get(runKey(userId, runId))?.status ?? null;
+}
+
 export function stopMemoryAskRun(userId: string, runId: string): boolean {
   const run = runs.get(runKey(userId, runId));
   if (!run) return false;
