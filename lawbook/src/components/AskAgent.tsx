@@ -285,6 +285,75 @@ const TOOL_DOT: Record<ToolStep["kind"], string> = {
 };
 
 const ASK_HISTORY_LIMIT = 50;
+const PENDING_ASK_KEY = "ask:pendingAfterAuth";
+const PENDING_ASK_TTL_MS = 30 * 60 * 1000;
+
+type PendingAsk = {
+  v: 1;
+  question: string;
+  context?: {
+    kind?: string;
+    citation?: string;
+  };
+  createdAt: number;
+};
+
+function savePendingAsk(pending: PendingAsk): boolean {
+  try {
+    sessionStorage.setItem(PENDING_ASK_KEY, JSON.stringify(pending));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function takePendingAsk(): PendingAsk | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_ASK_KEY);
+    if (!raw) return null;
+
+    sessionStorage.removeItem(PENDING_ASK_KEY);
+
+    const parsed = JSON.parse(raw) as Partial<PendingAsk>;
+    if (
+      parsed.v !== 1 ||
+      typeof parsed.question !== "string" ||
+      !parsed.question.trim() ||
+      typeof parsed.createdAt !== "number" ||
+      Date.now() - parsed.createdAt > PENDING_ASK_TTL_MS
+    ) {
+      return null;
+    }
+
+    const context =
+      parsed.context && typeof parsed.context === "object"
+        ? {
+            kind:
+              typeof parsed.context.kind === "string"
+                ? parsed.context.kind
+                : undefined,
+            citation:
+              typeof parsed.context.citation === "string"
+                ? parsed.context.citation
+                : undefined,
+          }
+        : undefined;
+
+    return {
+      v: 1,
+      question: parsed.question.trim(),
+      context,
+      createdAt: parsed.createdAt,
+    };
+  } catch {
+    try {
+      sessionStorage.removeItem(PENDING_ASK_KEY);
+    } catch {
+      // Ignore unavailable storage.
+    }
+    return null;
+  }
+}
 
 function isCursorOnFirstLine(el: HTMLTextAreaElement): boolean {
   return !el.value.slice(0, el.selectionStart).includes("\n");
@@ -396,9 +465,11 @@ export function AskAgent({
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { data: session } = authClient.useSession();
+  const { data: session, isPending: sessionPending } = authClient.useSession();
   const isSignedIn = Boolean(session?.user);
-  const next = encodeURIComponent(pathname || "/");
+  const query = searchParams.toString();
+  const currentPath = `${pathname || "/"}${query ? `?${query}` : ""}`;
+  const next = encodeURIComponent(currentPath);
   const signInHref = `/sign-in?next=${next}`;
   const signUpHref = `/sign-up?next=${next}`;
   const [messages, setMessages] = useState<Message[]>([]);
@@ -431,6 +502,9 @@ export function AskAgent({
     return () => setHideFooter(false);
   }, [messages.length, setHideFooter]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<
+    number | null
+  >(null);
   const draftKey = `ask:draft:${pinnedContext?.kind ?? "none"}:${pinnedContext?.citation ?? "none"}`;
 
   useEffect(() => {
@@ -528,9 +602,27 @@ export function AskAgent({
     autosize();
   }, [input, autosize]);
 
-  /** Keep the page pinned to the latest message while the thread grows. */
+  /** Keep the page pinned to the latest message, unless opened to a saved answer. */
   useLayoutEffect(() => {
     if (messages.length === 0) return;
+
+    const hash = window.location.hash.replace(/^#/, "");
+    const match = /^(?:answer|message)-(\d+)$/.exec(hash);
+    if (match) {
+      const id = Number(match[1]);
+      const target = document.getElementById(`ask-message-${id}`);
+      if (target) {
+        target.scrollIntoView({ block: "center" });
+        setHighlightedMessageId(id);
+        const timer = window.setTimeout(() => {
+          setHighlightedMessageId((current) =>
+            current === id ? null : current,
+          );
+        }, 3000);
+        return () => window.clearTimeout(timer);
+      }
+    }
+
     window.scrollTo({ top: document.documentElement.scrollHeight });
   }, [messages]);
 
@@ -623,6 +715,45 @@ export function AskAgent({
     async (text: string, resumeRunId?: string) => {
       const q = text.trim();
       if (!q) return;
+
+      if (sessionPending) return;
+
+      if (!isSignedIn) {
+        const saved = savePendingAsk({
+          v: 1,
+          question: q,
+          context: {
+            kind: pinnedContext?.kind,
+            citation: pinnedContext?.citation,
+          },
+          createdAt: Date.now(),
+        });
+        const userMsg: Message = {
+          id: msgId.current++,
+          role: "user",
+          text: q,
+          tools: [],
+          progress: [],
+          phase: "done",
+        };
+        const authMsg: Message = {
+          id: msgId.current++,
+          role: "assistant",
+          text: "",
+          tools: [],
+          progress: [],
+          phase: "error",
+          error: "Please sign in to use Ask Lawplain.",
+        };
+
+        resetHistoryNavigation();
+        setMessages((m) => [...m, userMsg, authMsg]);
+        if (saved) {
+          clearDraft();
+          setInput("");
+        }
+        return;
+      }
 
       if (activeRef.current) {
         if (queueingOpenRef.current) {
@@ -872,10 +1003,22 @@ export function AskAgent({
       pinnedContext,
       queuePrompt,
       resetHistoryNavigation,
+      sessionPending,
     ],
   );
 
   sendRef.current = send;
+
+  useEffect(() => {
+    if (!isSignedIn || busy || messagesRef.current.length > 0) return;
+
+    const pending = takePendingAsk();
+    if (!pending) return;
+
+    window.setTimeout(() => {
+      void sendRef.current?.(pending.question);
+    }, 0);
+  }, [busy, isSignedIn]);
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1149,7 +1292,7 @@ export function AskAgent({
           <>
             <button
               type="submit"
-              disabled={!input.trim()}
+              disabled={sessionPending || !input.trim()}
               className="inline-flex h-[42px] items-center gap-1.5 rounded-xl bg-foreground px-3 text-sm font-medium text-primary-fg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
               aria-label="Queue prompt"
             >
@@ -1166,7 +1309,7 @@ export function AskAgent({
         ) : (
           <button
             type="submit"
-            disabled={!input.trim()}
+            disabled={sessionPending || !input.trim()}
             className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-xl bg-foreground text-primary-fg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
             aria-label="Send"
           >
@@ -1250,7 +1393,8 @@ export function AskAgent({
                 key={s}
                 type="button"
                 onClick={() => void send(s)}
-                className="rounded-xl border border-border bg-surface px-3.5 py-2.5 text-left text-[13px] text-foreground transition-colors hover:border-border-strong hover:bg-surface-2"
+                disabled={sessionPending}
+                className="rounded-xl border border-border bg-surface px-3.5 py-2.5 text-left text-[13px] text-foreground transition-colors hover:border-border-strong hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {s}
               </button>
@@ -1267,7 +1411,13 @@ export function AskAgent({
             className="flex-1 space-y-6 pb-24"
           >
             {messages.map((m, i) => (
-              <div key={m.id} className="motion-fade-up">
+              <div
+                key={m.id}
+                id={`ask-message-${m.id}`}
+                className={`motion-fade-up scroll-mt-24 rounded-2xl transition-colors duration-700 ${
+                  highlightedMessageId === m.id ? "bg-accent-soft/60" : ""
+                }`}
+              >
                 {m.role === "user" ? (
                   <MessageRow align="end">
                     <MessageAvatar>
@@ -1295,6 +1445,8 @@ export function AskAgent({
                     cite={pinnedContext?.citation}
                     kind={pinnedContext?.kind}
                     sourceHref={pinnedContext?.href}
+                    threadId={threadIdRef.current}
+                    messageId={m.id}
                     isSignedIn={isSignedIn}
                   />
                 )}
@@ -1484,6 +1636,8 @@ function AnswerActions({
   cite,
   kind,
   sourceHref,
+  threadId,
+  messageId,
   tools,
   isSignedIn,
   signInHref,
@@ -1493,6 +1647,8 @@ function AnswerActions({
   cite?: string;
   kind?: string;
   sourceHref?: string;
+  threadId: string;
+  messageId: number;
   tools: string[];
   isSignedIn: boolean;
   signInHref: string;
@@ -1540,6 +1696,8 @@ function AnswerActions({
           cite,
           kind,
           sourceHref,
+          threadId,
+          messageId,
           tools,
         }),
       });
@@ -1625,6 +1783,8 @@ function AssistantMessage({
   cite,
   kind,
   sourceHref,
+  threadId,
+  messageId,
   isSignedIn,
 }: {
   m: Message;
@@ -1635,6 +1795,8 @@ function AssistantMessage({
   cite?: string;
   kind?: string;
   sourceHref?: string;
+  threadId: string;
+  messageId: number;
   isSignedIn: boolean;
 }) {
   const live = !["done", "error", "stopped"].includes(m.phase);
@@ -1774,6 +1936,8 @@ function AssistantMessage({
             cite={cite}
             kind={kind}
             sourceHref={sourceHref}
+            threadId={threadId}
+            messageId={messageId}
             tools={m.tools.map((t) => t.label)}
             isSignedIn={isSignedIn}
             signInHref={signInHref}

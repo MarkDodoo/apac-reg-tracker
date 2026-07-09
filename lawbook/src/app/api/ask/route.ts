@@ -56,8 +56,18 @@ function errorStream(message: string): Response {
 }
 
 export async function POST(req: Request): Promise<Response> {
-  const session = await getSession(req.headers);
-  if (!session) {
+  let session: Awaited<ReturnType<typeof getSession>>;
+  try {
+    session = await getSession(req.headers);
+  } catch (err) {
+    console.error("Ask auth check failed", err);
+    return new Response(JSON.stringify({ error: "Authentication required" }), {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  if (!session?.user?.id) {
     return new Response(JSON.stringify({ error: "Authentication required" }), {
       status: 401,
       headers: { "content-type": "application/json" },
