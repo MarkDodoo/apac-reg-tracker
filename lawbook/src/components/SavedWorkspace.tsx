@@ -230,9 +230,7 @@ export function SavedWorkspace() {
         {authorities.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border-strong p-5 text-sm text-muted">
             <p className="font-medium text-foreground">Nothing saved yet.</p>
-            <p className="mt-1">
-              Save a document and it will appear here.
-            </p>
+            <p className="mt-1">Save a document and it will appear here.</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Link
                 href="/?tab=judgments"
