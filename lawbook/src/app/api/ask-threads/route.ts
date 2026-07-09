@@ -106,7 +106,7 @@ export async function POST(req: Request): Promise<Response> {
   if (!id)
     return Response.json({ error: "Missing thread id" }, { status: 400 });
   const messages = Array.isArray(body.messages)
-    ? body.messages.slice(0, 200)
+    ? body.messages.slice(-200)
     : [];
   if (messages.length === 0)
     return Response.json({ error: "No messages" }, { status: 400 });
