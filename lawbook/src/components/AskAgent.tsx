@@ -719,6 +719,7 @@ export function AskAgent({
     () => initialThreadId ?? crypto.randomUUID(),
   );
   const [threadListVersion, setThreadListVersion] = useState(0);
+  const [loadingThreadId, setLoadingThreadId] = useState<string | null>(null);
   const [optimisticThreads, setOptimisticThreads] = useState<ThreadListItem[]>(
     [],
   );
@@ -751,6 +752,9 @@ export function AskAgent({
   >(new Map());
   const deletedThreadIdsRef = useRef<Set<string>>(new Set());
   const loadThreadSeqRef = useRef(0);
+  const loadThreadRef = useRef<((threadId: string) => Promise<void>) | null>(
+    null,
+  );
   const threadIdRef = useRef<string>("");
   const runIdRef = useRef<string | null>(null);
   const creatingNewChatRef = useRef(false);
@@ -1102,7 +1106,7 @@ export function AskAgent({
       const q = text.trim();
       if (!q) return;
 
-      if (sessionPending) return;
+      if (sessionPending || loadingThreadId) return;
 
       if (!isSignedIn) {
         const saved = savePendingAsk({
@@ -1550,6 +1554,7 @@ export function AskAgent({
       resetHistoryNavigation,
       sessionPending,
       upsertOptimisticThread,
+      loadingThreadId,
     ],
   );
 
@@ -1666,6 +1671,8 @@ export function AskAgent({
         if (window.location.pathname === "/ask") {
           window.history.replaceState(null, "", `/ask/${ar.threadId}`);
         }
+        void loadThreadRef.current?.(ar.threadId);
+        return;
       }
       void sendRef.current?.(ar.question, ar.runId, 0, ar.startedAt);
     } catch {
@@ -1883,6 +1890,7 @@ export function AskAgent({
   const loadThread = useCallback(
     async (threadId: string) => {
       const loadSeq = ++loadThreadSeqRef.current;
+      setLoadingThreadId(threadId);
       const restoreOptimisticSnapshot = () => {
         const memorySnapshot =
           optimisticThreadSnapshotsRef.current.get(threadId);
@@ -2062,10 +2070,13 @@ export function AskAgent({
         setMessages(loaded);
       } catch {
         restoreOptimisticSnapshot();
+      } finally {
+        if (loadSeq === loadThreadSeqRef.current) setLoadingThreadId(null);
       }
     },
     [flushThread],
   );
+  loadThreadRef.current = loadThread;
 
   // Opened at /ask/[id]: restore that saved conversation on mount.
   const loadedThreadRef = useRef(false);
@@ -2188,11 +2199,13 @@ export function AskAgent({
           }}
           rows={1}
           placeholder={
-            messages.length === 0
-              ? "Ask a question about Singapore law…"
-              : busy
-                ? "Ask for follow-up changes…"
-                : "Ask a follow-up…"
+            loadingThreadId
+              ? "Loading thread…"
+              : messages.length === 0
+                ? "Ask a question about Singapore law…"
+                : busy
+                  ? "Ask for follow-up changes…"
+                  : "Ask a follow-up…"
           }
           className="thin-scroll max-h-40 flex-1 resize-none rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-2 focus:border-accent focus:outline-none"
         />
@@ -2200,7 +2213,9 @@ export function AskAgent({
           <>
             <button
               type="submit"
-              disabled={sessionPending || !input.trim()}
+              disabled={
+                sessionPending || Boolean(loadingThreadId) || !input.trim()
+              }
               className="inline-flex h-[42px] items-center gap-1.5 rounded-xl bg-foreground px-3 text-sm font-medium text-primary-fg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
               aria-label="Queue prompt"
             >
@@ -2217,7 +2232,9 @@ export function AskAgent({
         ) : (
           <button
             type="submit"
-            disabled={sessionPending || !input.trim()}
+            disabled={
+              sessionPending || Boolean(loadingThreadId) || !input.trim()
+            }
             className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-xl bg-foreground text-primary-fg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
             aria-label="Send"
           >
@@ -2320,7 +2337,7 @@ export function AskAgent({
                 key={s}
                 type="button"
                 onClick={() => void send(s)}
-                disabled={sessionPending}
+                disabled={sessionPending || Boolean(loadingThreadId)}
                 className="rounded-xl border border-border bg-surface px-3.5 py-2.5 text-left text-[13px] text-foreground transition-colors hover:border-border-strong hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {s}
