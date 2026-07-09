@@ -1159,14 +1159,55 @@ export function AskAgent({
                 });
                 break;
               }
-              case "done":
+              case "done": {
                 queueingOpenRef.current = false;
-                patch((m) => ({
-                  ...m,
-                  text: ev.text || acc,
-                  phase: "done",
-                  cost: { usd: ev.costUsd, tokens: ev.contextTokens },
-                }));
+                let finalSnapshot: Message[] = [];
+                setMessages((ms) => {
+                  finalSnapshot = ms.map((m) =>
+                    m.id === aId
+                      ? {
+                          ...m,
+                          text: ev.text || acc,
+                          phase: "done",
+                          cost: { usd: ev.costUsd, tokens: ev.contextTokens },
+                        }
+                      : m,
+                  );
+                  messagesRef.current = finalSnapshot;
+                  return finalSnapshot;
+                });
+                const finalThreadId = threadIdRef.current;
+                const finalTitle = shortTitle(
+                  finalSnapshot.find((m) => m.role === "user")?.text ?? q,
+                );
+                setOptimisticThread({
+                  id: finalThreadId,
+                  title: finalTitle,
+                  updatedAt: Date.now(),
+                  status: "done",
+                });
+                if (
+                  isSignedIn &&
+                  !deletedThreadIdsRef.current.has(finalThreadId)
+                ) {
+                  void fetch("/api/ask-threads", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({
+                      id: finalThreadId,
+                      title: finalTitle,
+                      messages: serializeMessages(finalSnapshot),
+                      cite: pinnedContext?.citation,
+                      kind: pinnedContext?.kind,
+                      sourceHref: pinnedContext?.href,
+                      status: "done",
+                    }),
+                  })
+                    .then((res) => {
+                      if (res.ok) refreshThreadList();
+                    })
+                    .catch(() => {});
+                }
                 try {
                   sessionStorage.removeItem("ask:activeRun");
                 } catch {
@@ -1174,6 +1215,7 @@ export function AskAgent({
                 }
                 await reader.cancel().catch(() => {});
                 return;
+              }
               case "error":
                 queueingOpenRef.current = false;
                 patch((m) => ({ ...m, phase: "error", error: ev.message }));
@@ -1711,10 +1753,15 @@ export function AskAgent({
   );
 
   const latestAssistantForBusy = latestAssistantMessage(messages);
+  const activeThreadStatus = latestAssistantForBusy
+    ? isLiveAssistant(latestAssistantForBusy)
+      ? "running"
+      : latestAssistantForBusy.phase === "stopped"
+        ? "stopped"
+        : "done"
+    : null;
   const liveAssistantThreadId =
-    latestAssistantForBusy && isLiveAssistant(latestAssistantForBusy)
-      ? threadIdRef.current
-      : null;
+    activeThreadStatus === "running" ? threadIdRef.current : null;
 
   return (
     <div className="flex flex-col">
@@ -1723,6 +1770,7 @@ export function AskAgent({
           open={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           activeId={threadIdRef.current}
+          activeStatus={activeThreadStatus}
           busyId={liveAssistantThreadId}
           onResume={(id) => {
             void loadThread(id);
@@ -1874,6 +1922,7 @@ function ThreadSidebar({
   open,
   onClose,
   activeId,
+  activeStatus,
   busyId,
   onResume,
   onNewChat,
@@ -1884,6 +1933,7 @@ function ThreadSidebar({
   open: boolean;
   onClose: () => void;
   activeId: string;
+  activeStatus: "running" | "stopped" | "done" | null;
   busyId: string | null;
   onResume: (id: string) => void;
   onNewChat: () => void;
