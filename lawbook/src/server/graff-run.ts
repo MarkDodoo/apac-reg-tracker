@@ -141,6 +141,7 @@ export class GraffRun {
   async launch(
     sandbox: CubeSandbox,
     params: GraffRunParams,
+    onSandboxCreated?: (sandboxId: string) => void | Promise<void>,
   ): Promise<AgentEvent[]> {
     const events: AgentEvent[] = [];
     events.push({
@@ -151,6 +152,7 @@ export class GraffRun {
     });
     const sid = await sandbox.createSandbox({ cpuCount: 2, memoryMB: 1024 });
     this.sandboxId = sid;
+    await onSandboxCreated?.(sid);
 
     events.push({
       type: "progress",

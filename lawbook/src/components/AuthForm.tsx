@@ -9,6 +9,18 @@ type AuthFormProps = {
   mode: "sign-in" | "sign-up";
 };
 
+type AuthErrorState =
+  | { kind: "text"; message: string }
+  | { kind: "registered"; username: string }
+  | { kind: "check-failed"; username: string }
+  | { kind: "unregistered"; username: string };
+
+const USERNAME_MIN_LENGTH = 3;
+const USERNAME_MAX_LENGTH = 30;
+const USERNAME_PATTERN = /^[a-zA-Z0-9_.]+$/;
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 128;
+
 function accountEmail(username: string): string {
   return `${username.trim().toLowerCase()}@users.lawplain.local`;
 }
@@ -23,6 +35,87 @@ function errorMessage(error: unknown, fallback: string): string {
     }
   }
   return fallback;
+}
+
+function errorCode(error: unknown): string | null {
+  if (error && typeof error === "object" && "code" in error) {
+    return typeof error.code === "string" ? error.code : null;
+  }
+  return null;
+}
+
+function errorStrings(error: unknown, seen = new Set<unknown>()): string[] {
+  if (typeof error === "string") return [error];
+  if (!error || typeof error !== "object" || seen.has(error)) return [];
+  seen.add(error);
+
+  return Object.entries(error as Record<string, unknown>).flatMap(
+    ([key, value]) => {
+      if (["code", "message", "statusText", "error"].includes(key)) {
+        return typeof value === "string" ? [value] : errorStrings(value, seen);
+      }
+      if (["body", "response", "data", "cause"].includes(key)) {
+        return errorStrings(value, seen);
+      }
+      return [];
+    },
+  );
+}
+
+function isDuplicateAccountError(error: unknown): boolean {
+  const code = errorCode(error);
+  const details = errorStrings(error).join(" ");
+  return (
+    code === "USERNAME_IS_ALREADY_TAKEN" ||
+    code === "USER_ALREADY_EXISTS" ||
+    code === "EMAIL_ALREADY_EXISTS" ||
+    code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL" ||
+    /username.*(taken|exists|use)/i.test(details) ||
+    /(user|email|account).*(already exists|already in use)/i.test(details) ||
+    /unique constraint/i.test(details)
+  );
+}
+
+function usernameRequirementError(value: string): string | null {
+  if (
+    value.length < USERNAME_MIN_LENGTH ||
+    value.length > USERNAME_MAX_LENGTH
+  ) {
+    return `Username must be between ${USERNAME_MIN_LENGTH} and ${USERNAME_MAX_LENGTH} characters.`;
+  }
+  if (!USERNAME_PATTERN.test(value)) {
+    return "Username can only contain letters, numbers, underscores, and periods.";
+  }
+  return null;
+}
+
+function passwordRequirementError(value: string): string | null {
+  if (value.length < PASSWORD_MIN_LENGTH) {
+    return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
+  }
+  if (value.length > PASSWORD_MAX_LENGTH) {
+    return `Password must be ${PASSWORD_MAX_LENGTH} characters or fewer.`;
+  }
+  return null;
+}
+
+function isInternalServerError(message: string): boolean {
+  return /internal server error/i.test(message);
+}
+
+async function accountExists(username: string): Promise<boolean | null> {
+  try {
+    const response = await fetch(
+      `/api/account-exists?username=${encodeURIComponent(username)}`,
+      { cache: "no-store" },
+    );
+    if (!response.ok) return null;
+
+    const result = (await response.json()) as { exists?: unknown };
+    return result.exists === true;
+  } catch {
+    return null;
+  }
 }
 
 function safeNextPath(value: string | null): string {
@@ -43,7 +136,7 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AuthErrorState | null>(null);
   const [loading, setLoading] = useState(false);
 
   const isSignUp = mode === "sign-up";
@@ -54,18 +147,41 @@ export function AuthForm({ mode }: AuthFormProps) {
     setError(null);
 
     if (!cleanUsername || !password) {
-      setError("Enter a username and password.");
+      setError({ kind: "text", message: "Enter a username and password." });
       return;
     }
 
     if (isSignUp && password !== confirmPassword) {
-      setError("Passwords do not match.");
+      setError({ kind: "text", message: "Passwords do not match." });
       return;
     }
+
+    if (isSignUp) {
+      const usernameError = usernameRequirementError(cleanUsername);
+      if (usernameError) {
+        setError({ kind: "text", message: usernameError });
+        return;
+      }
+
+      const passwordError = passwordRequirementError(password);
+      if (passwordError) {
+        setError({ kind: "text", message: passwordError });
+        return;
+      }
+    }
+
+    let usernameCheckFailed = false;
 
     setLoading(true);
     try {
       if (isSignUp) {
+        const exists = await accountExists(cleanUsername);
+        if (exists === true) {
+          setError({ kind: "registered", username: cleanUsername });
+          return;
+        }
+        usernameCheckFailed = exists === null;
+
         const { error } = await authClient.signUp.email({
           name: cleanUsername,
           email: accountEmail(cleanUsername),
@@ -73,19 +189,54 @@ export function AuthForm({ mode }: AuthFormProps) {
           username: cleanUsername,
           displayUsername: cleanUsername,
         });
-        if (error) throw error;
+        if (error) {
+          if (isDuplicateAccountError(error)) {
+            setError({ kind: "registered", username: cleanUsername });
+            return;
+          }
+          throw error;
+        }
       } else {
+        const exists = await accountExists(cleanUsername);
+        if (exists === false) {
+          setError({ kind: "unregistered", username: cleanUsername });
+          return;
+        }
+
         const { error } = await authClient.signIn.username({
           username: cleanUsername,
           password,
         });
-        if (error) throw error;
+        if (error) {
+          const message = errorMessage(error, "Invalid username or password.");
+          throw new Error(
+            exists === true && !isInternalServerError(message)
+              ? "Incorrect password."
+              : "Invalid username or password.",
+          );
+        }
       }
 
       router.push(next);
       router.refresh();
     } catch (err) {
-      setError(errorMessage(err, "Authentication failed. Please try again."));
+      const message = errorMessage(
+        err,
+        "Authentication failed. Please try again.",
+      );
+      if (isSignUp && usernameCheckFailed && isInternalServerError(message)) {
+        setError({ kind: "check-failed", username: cleanUsername });
+        return;
+      }
+
+      setError({
+        kind: "text",
+        message: isInternalServerError(message)
+          ? isSignUp
+            ? "We couldn't create your account right now. We couldn't verify whether that username is already in use; try signing in if you already have an account, or try again later."
+            : "Invalid username or password."
+          : message,
+      });
     } finally {
       setLoading(false);
     }
@@ -148,7 +299,43 @@ export function AuthForm({ mode }: AuthFormProps) {
 
         {error && (
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
+            {error.kind === "unregistered" ? (
+              <>
+                No account found for “{error.username}”.{" "}
+                <Link
+                  href={`/sign-up?next=${encodeURIComponent(next)}`}
+                  className="font-medium underline"
+                >
+                  Create an account
+                </Link>
+                .
+              </>
+            ) : error.kind === "registered" ? (
+              <>
+                Username “{error.username}” is already in use.{" "}
+                <Link
+                  href={`/sign-in?next=${encodeURIComponent(next)}`}
+                  className="font-medium underline"
+                >
+                  Sign in instead
+                </Link>
+                .
+              </>
+            ) : error.kind === "check-failed" ? (
+              <>
+                We couldn't check whether “{error.username}” is already in use.
+                Try{" "}
+                <Link
+                  href={`/sign-in?next=${encodeURIComponent(next)}`}
+                  className="font-medium underline"
+                >
+                  signing in
+                </Link>{" "}
+                if you already have an account, or try again later.
+              </>
+            ) : (
+              error.message
+            )}
           </p>
         )}
 
