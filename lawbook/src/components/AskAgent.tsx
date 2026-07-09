@@ -1512,14 +1512,24 @@ export function AskAgent({
   }, [persistThreadSnapshot, resetChatState]);
 
   const deleteActiveChat = useCallback(
-    (id: string) => {
-      if (id !== threadIdRef.current) return;
+    (id: string, wasActive = false) => {
+      const isRouteThread =
+        typeof window !== "undefined" &&
+        window.location.pathname === `/ask/${id}`;
+      if (
+        !wasActive &&
+        !isRouteThread &&
+        id !== activeThreadId &&
+        id !== threadIdRef.current
+      ) {
+        return;
+      }
       deletedThreadIdsRef.current.add(id);
       stopBackendRun(runIdRef.current, id);
       resetChatState({ createPlaceholder: false });
       setSidebarOpen(true);
     },
-    [resetChatState],
+    [activeThreadId, resetChatState],
   );
 
   const loadThread = useCallback(
@@ -1945,7 +1955,7 @@ function ThreadSidebar({
   busyId: string | null;
   onResume: (id: string) => void;
   onNewChat: () => void;
-  onDeleteActive: (id: string) => void;
+  onDeleteActive: (id: string, wasActive?: boolean) => void;
   refreshKey: number;
   optimisticThread: ThreadListItem | null;
 }) {
@@ -2019,7 +2029,7 @@ function ThreadSidebar({
   async function remove(e: React.MouseEvent, id: string) {
     e.stopPropagation();
     setItems((xs) => xs.filter((x) => x.id !== id));
-    onDeleteActive(id);
+    onDeleteActive(id, id === activeId);
     await fetch(`/api/ask-threads?id=${encodeURIComponent(id)}`, {
       method: "DELETE",
     }).catch(() => {});
