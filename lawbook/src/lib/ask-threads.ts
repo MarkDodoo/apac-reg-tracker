@@ -143,12 +143,14 @@ interface SummaryRow {
 
 export async function listThreads(userId: string): Promise<ThreadSummary[]> {
   const db = await getDb();
+  // Keep history order stable by when a chat was first opened/created, not by
+  // later autosaves, status reconciliation, or viewing another thread.
   const { results } = await db
     .prepare(
       `SELECT id, title, cite, kind, sourceHref, messageCount, updatedAt, runId, status
        FROM ask_threads
        WHERE userId = ?
-       ORDER BY updatedAt DESC, id DESC
+       ORDER BY createdAt DESC, id DESC
        LIMIT ?`,
     )
     .bind(userId, LIST_LIMIT)
