@@ -588,6 +588,7 @@ export function AskAgent({
         text: string,
         resumeRunId?: string,
         resumeFrom?: number,
+        resumeStartedAt?: number,
       ) => Promise<void>)
     | null
   >(null);
@@ -1489,17 +1490,13 @@ export function AskAgent({
     if (creatingNewChatRef.current) return;
     creatingNewChatRef.current = true;
     try {
-      // Do not clear the visible transcript until the current thread is safely
-      // persisted. Otherwise New chat can make an in-progress conversation look
-      // deleted if the best-effort flush is dropped or fails.
+      // Save the current transcript before switching when possible, but never
+      // make the New chat button unusable because of a transient persistence
+      // failure. Autosave/start-save are best-effort too; users must always be
+      // able to detach from the current stream and begin again.
       const saved = await persistThreadSnapshot();
       if (!saved) {
-        if (typeof window !== "undefined") {
-          window.alert(
-            "We couldn't save this chat yet. Please try New chat again in a moment.",
-          );
-        }
-        return;
+        console.warn("Failed to persist current ask thread before New chat");
       }
 
       // Detach this UI stream only. Durable Object-backed research keeps running
@@ -1789,8 +1786,9 @@ export function AskAgent({
           activeStatus={activeThreadStatus}
           busyId={liveAssistantThreadId}
           onResume={(id) => {
-            threadIdRef.current = id;
-            setActiveThreadId(id);
+            // loadThread() first flushes the currently-visible thread. Do not
+            // point threadIdRef at the target before that flush, or the current
+            // transcript can overwrite the selected history item.
             void loadThread(id);
             if (typeof window !== "undefined") {
               window.history.replaceState(null, "", `/ask/${id}`);

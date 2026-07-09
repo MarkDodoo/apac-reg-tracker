@@ -70,6 +70,7 @@ export async function saveThread(input: {
            WHEN excluded.status = 'running'
              AND ask_threads.status IS NOT NULL
              AND ask_threads.status != 'running'
+             AND excluded.messageCount <= ask_threads.messageCount
            THEN ask_threads.messages
            ELSE excluded.messages
          END,
@@ -77,6 +78,7 @@ export async function saveThread(input: {
            WHEN excluded.status = 'running'
              AND ask_threads.status IS NOT NULL
              AND ask_threads.status != 'running'
+             AND excluded.messageCount <= ask_threads.messageCount
            THEN ask_threads.messageCount
            ELSE excluded.messageCount
          END,
@@ -87,6 +89,7 @@ export async function saveThread(input: {
            WHEN excluded.status = 'running'
              AND ask_threads.status IS NOT NULL
              AND ask_threads.status != 'running'
+             AND excluded.messageCount <= ask_threads.messageCount
            THEN ask_threads.runId
            ELSE excluded.runId
          END,
@@ -94,6 +97,7 @@ export async function saveThread(input: {
            WHEN excluded.status = 'running'
              AND ask_threads.status IS NOT NULL
              AND ask_threads.status != 'running'
+             AND excluded.messageCount <= ask_threads.messageCount
            THEN ask_threads.status
            ELSE excluded.status
          END,
@@ -101,6 +105,7 @@ export async function saveThread(input: {
            WHEN excluded.status = 'running'
              AND ask_threads.status IS NOT NULL
              AND ask_threads.status != 'running'
+             AND excluded.messageCount <= ask_threads.messageCount
            THEN ask_threads.unread
            ELSE 0
          END,
@@ -108,6 +113,7 @@ export async function saveThread(input: {
            WHEN excluded.status = 'running'
              AND ask_threads.status IS NOT NULL
              AND ask_threads.status != 'running'
+             AND excluded.messageCount <= ask_threads.messageCount
            THEN ask_threads.updatedAt
            ELSE excluded.updatedAt
          END
