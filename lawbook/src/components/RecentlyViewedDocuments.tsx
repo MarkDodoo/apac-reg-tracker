@@ -102,7 +102,7 @@ export function RecentlyViewedDocuments() {
             No recent documents yet.
           </p>
           <p className="mt-1">
-            Documents you open while signed in will appear here.
+            Documents you have opened while signed in will appear here.
           </p>
         </div>
       ) : (

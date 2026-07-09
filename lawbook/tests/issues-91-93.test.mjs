@@ -35,6 +35,29 @@ test("recently viewed documents require auth, are persisted, and appear in saved
   assert.match(migration, /REFERENCES user\(id\) ON DELETE CASCADE/);
   assert.match(migration, /idx_recently_viewed_documents_user_doc/);
   assert.match(savedPage, /<RecentlyViewedDocuments \/>/);
+  assert.match(savedPage, /Your saved documents live here\./);
+  assert.doesNotMatch(
+    savedPage,
+    /Your saved judgments and statutes live here\./,
+  );
+});
+
+test("recently viewed page uses concise copy", () => {
+  const recentsPage = read("src/app/recents/page.tsx");
+  const recentsList = read("src/components/RecentlyViewedList.tsx");
+
+  assert.match(recentsPage, /Documents you have opened while signed in\./);
+  assert.doesNotMatch(recentsPage, /newest first/);
+  assert.doesNotMatch(recentsPage, /re-running searches/);
+  assert.doesNotMatch(
+    recentsList,
+    /Documents you have opened while signed in\.\s*<br \/>\s*Sign in or create an account to get started\./,
+  );
+  assert.match(
+    recentsList,
+    /body="Sign in or create an account to get started\."/,
+  );
+  assert.doesNotMatch(recentsList, /quickly resume your research/);
 });
 
 test("supported document pages record recently viewed documents", () => {

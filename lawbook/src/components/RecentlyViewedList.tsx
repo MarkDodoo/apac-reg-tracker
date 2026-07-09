@@ -140,7 +140,7 @@ export function RecentlyViewedList() {
       <SavedFeatureAuthPrompt
         next="/recents"
         title="Sign in to track recently viewed documents"
-        body="Documents you open while signed in will appear here so you can quickly resume your research. Sign in or create an account to get started."
+        body="Sign in or create an account to get started."
       />
     );
   }
@@ -197,7 +197,7 @@ export function RecentlyViewedList() {
             No recently viewed documents.
           </p>
           <p className="mt-1">
-            Documents you open while signed in will appear here.
+            Documents you have opened while signed in will appear here.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Link

@@ -16,8 +16,7 @@ export default function RecentsPage() {
           Recently viewed
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-          Documents you have opened while signed in, newest first. Use this to
-          quickly resume research without re-running searches.
+          Documents you have opened while signed in.
         </p>
       </div>
       <RecentlyViewedList />
