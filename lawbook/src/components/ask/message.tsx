@@ -141,10 +141,12 @@ type BubbleVariant = "user" | "assistant" | "plain";
 export function Bubble({
   variant = "assistant",
   className,
+  id,
   children,
 }: {
   variant?: BubbleVariant;
   className?: string;
+  id?: string;
   children: ReactNode;
 }) {
   const align = useContext(AlignContext);
@@ -157,6 +159,7 @@ export function Bubble({
   };
   return (
     <div
+      id={id}
       className={cx(
         "w-fit max-w-full rounded-2xl",
         tail,

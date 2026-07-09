@@ -11,6 +11,8 @@ export interface SavedAskAnswer {
   cite: string | null;
   kind: string | null;
   sourceHref: string | null;
+  threadId: string | null;
+  messageId: number | null;
   tools: string[];
   createdAt: number;
 }
@@ -18,6 +20,22 @@ export interface SavedAskAnswer {
 const LIST_LIMIT = 200;
 
 let schemaReady: Promise<void> | null = null;
+
+async function addColumnIfMissing(
+  db: D1Database,
+  columns: Set<string>,
+  name: string,
+  definition: string,
+): Promise<void> {
+  if (columns.has(name)) return;
+  try {
+    await db
+      .prepare(`ALTER TABLE saved_ask_answers ADD COLUMN ${definition}`)
+      .run();
+  } catch (error) {
+    if (!String(error).toLowerCase().includes("duplicate column")) throw error;
+  }
+}
 
 async function ensureSavedAskSchema(db: D1Database): Promise<void> {
   schemaReady ??= (async () => {
@@ -37,10 +55,24 @@ async function ensureSavedAskSchema(db: D1Database): Promise<void> {
       )
       .run();
 
+    const { results } = await db
+      .prepare("PRAGMA table_info(saved_ask_answers)")
+      .all<{ name: string }>();
+    const columns = new Set((results ?? []).map((row) => row.name));
+
+    await addColumnIfMissing(db, columns, "threadId", "threadId TEXT");
+    await addColumnIfMissing(db, columns, "messageId", "messageId INTEGER");
+
     await db
       .prepare(
         `CREATE INDEX IF NOT EXISTS idx_saved_ask_answers_user_created
           ON saved_ask_answers (userId, createdAt DESC, id DESC)`,
+      )
+      .run();
+    await db
+      .prepare(
+        `CREATE INDEX IF NOT EXISTS idx_saved_ask_answers_thread
+          ON saved_ask_answers (userId, threadId, messageId)`,
       )
       .run();
   })().catch((error) => {
@@ -74,6 +106,8 @@ interface Row {
   cite: string | null;
   kind: string | null;
   sourceHref: string | null;
+  threadId: string | null;
+  messageId: number | null;
   tools: string | null;
   createdAt: number;
 }
@@ -94,6 +128,8 @@ function toAnswer(row: Row): SavedAskAnswer {
     cite: row.cite,
     kind: row.kind,
     sourceHref: row.sourceHref,
+    threadId: row.threadId,
+    messageId: row.messageId === null ? null : Number(row.messageId),
     tools,
     createdAt: Number(row.createdAt),
   };
@@ -106,6 +142,8 @@ export async function saveAskAnswer({
   cite,
   kind,
   sourceHref,
+  threadId,
+  messageId,
   tools,
 }: {
   userId: string;
@@ -114,6 +152,8 @@ export async function saveAskAnswer({
   cite?: string;
   kind?: string;
   sourceHref?: string;
+  threadId?: string;
+  messageId?: number;
   tools?: string[];
 }): Promise<SavedAskAnswer> {
   const db = await getDb();
@@ -125,8 +165,8 @@ export async function saveAskAnswer({
   await db
     .prepare(
       `INSERT INTO saved_ask_answers
-        (id, userId, question, answer, cite, kind, sourceHref, tools, createdAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, userId, question, answer, cite, kind, sourceHref, threadId, messageId, tools, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -136,6 +176,10 @@ export async function saveAskAnswer({
       cite || null,
       kind || null,
       sourceHref || null,
+      threadId || null,
+      typeof messageId === "number" && Number.isFinite(messageId)
+        ? Math.max(0, Math.trunc(messageId))
+        : null,
       toolsJson,
       createdAt,
     )
@@ -147,6 +191,11 @@ export async function saveAskAnswer({
     cite: cite || null,
     kind: kind || null,
     sourceHref: sourceHref || null,
+    threadId: threadId || null,
+    messageId:
+      typeof messageId === "number" && Number.isFinite(messageId)
+        ? Math.max(0, Math.trunc(messageId))
+        : null,
     tools: tools ?? [],
     createdAt,
   };
@@ -158,7 +207,7 @@ export async function listAskAnswers(
   const db = await getDb();
   const { results } = await db
     .prepare(
-      `SELECT id, question, answer, cite, kind, sourceHref, tools, createdAt
+      `SELECT id, question, answer, cite, kind, sourceHref, threadId, messageId, tools, createdAt
        FROM saved_ask_answers
        WHERE userId = ?
        ORDER BY createdAt DESC, id DESC

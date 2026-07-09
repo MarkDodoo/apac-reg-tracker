@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { XIcon } from "@/components/icons";
 import { authClient } from "@/lib/auth-client";
 
@@ -12,6 +14,8 @@ interface SavedAnswer {
   cite: string | null;
   kind: string | null;
   sourceHref: string | null;
+  threadId: string | null;
+  messageId: number | null;
   tools: string[];
   createdAt: number;
 }
@@ -23,6 +27,124 @@ function formatDate(ts: number) {
     year: "numeric",
   }).format(new Date(ts));
 }
+
+const markdownComponents: Components = {
+  p({ children, ...props }) {
+    return (
+      <p className="mb-3 leading-relaxed last:mb-0" {...props}>
+        {children}
+      </p>
+    );
+  },
+  strong({ children, ...props }) {
+    return (
+      <strong className="font-semibold text-foreground" {...props}>
+        {children}
+      </strong>
+    );
+  },
+  em({ children, ...props }) {
+    return (
+      <em className="italic" {...props}>
+        {children}
+      </em>
+    );
+  },
+  a({ children, href, ...props }) {
+    return (
+      <a
+        href={href}
+        className="text-accent underline decoration-accent/30 underline-offset-2 hover:decoration-accent"
+        target="_blank"
+        rel="noreferrer"
+        {...props}
+      >
+        {children}
+      </a>
+    );
+  },
+  ol({ children, ...props }) {
+    return (
+      <ol className="mb-3 ml-4 list-decimal space-y-1" {...props}>
+        {children}
+      </ol>
+    );
+  },
+  ul({ children, ...props }) {
+    return (
+      <ul className="mb-3 ml-4 list-disc space-y-1" {...props}>
+        {children}
+      </ul>
+    );
+  },
+  li({ children, ...props }) {
+    return (
+      <li className="leading-relaxed" {...props}>
+        {children}
+      </li>
+    );
+  },
+  h1({ children, ...props }) {
+    return (
+      <h1
+        className="mb-2 font-serif text-lg font-medium text-foreground"
+        {...props}
+      >
+        {children}
+      </h1>
+    );
+  },
+  h2({ children, ...props }) {
+    return (
+      <h2
+        className="mb-2 font-serif text-base font-medium text-foreground"
+        {...props}
+      >
+        {children}
+      </h2>
+    );
+  },
+  h3({ children, ...props }) {
+    return (
+      <h3
+        className="mb-1 font-serif text-sm font-medium text-foreground"
+        {...props}
+      >
+        {children}
+      </h3>
+    );
+  },
+  blockquote({ children, ...props }) {
+    return (
+      <blockquote
+        className="border-l-2 border-accent pl-3 italic text-muted-2"
+        {...props}
+      >
+        {children}
+      </blockquote>
+    );
+  },
+  code({ children, ...props }) {
+    return (
+      <code
+        className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs"
+        {...props}
+      >
+        {children}
+      </code>
+    );
+  },
+  pre({ children, ...props }) {
+    return (
+      <pre
+        className="overflow-x-auto rounded-lg bg-surface-2 p-3 font-mono text-xs"
+        {...props}
+      >
+        {children}
+      </pre>
+    );
+  },
+};
 
 /**
  * Saved Ask Lawplain answers (issue #22). Self-contained list with copy /
@@ -137,6 +259,11 @@ export function SavedAnswers() {
           {answers.map((a) => {
             const expanded = expandedAnswerIds.has(a.id);
             const answerId = `saved-answer-${a.id}`;
+            const chatHref = a.threadId
+              ? `/ask/${encodeURIComponent(a.threadId)}${
+                  a.messageId !== null ? `#answer-${a.messageId}` : ""
+                }`
+              : "/ask";
             return (
               <li
                 key={a.id}
@@ -145,14 +272,26 @@ export function SavedAnswers() {
                 <p className="font-serif text-base font-medium leading-snug text-foreground">
                   {a.question}
                 </p>
-                <p
-                  id={answerId}
-                  className={`mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-muted ${expanded ? "" : "line-clamp-3"}`}
-                >
-                  {expanded
-                    ? a.answer
-                    : a.answer.replace(/[#*_`>[\]]/g, "").slice(0, 320)}
-                </p>
+                {expanded ? (
+                  <div
+                    id={answerId}
+                    className="mt-1.5 text-sm leading-relaxed text-muted"
+                  >
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={markdownComponents}
+                    >
+                      {a.answer}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <p
+                    id={answerId}
+                    className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-muted line-clamp-3"
+                  >
+                    {a.answer.replace(/[#*_`>[\]]/g, "").slice(0, 320)}
+                  </p>
+                )}
                 <div className="mt-2.5 flex flex-wrap items-center gap-1 text-xs text-muted-2">
                   <span>Saved {formatDate(a.createdAt)}</span>
                   <span className="mx-1 text-border-strong">·</span>
@@ -179,6 +318,9 @@ export function SavedAnswers() {
                   >
                     Export .md
                   </button>
+                  <Link href={chatHref} className={act}>
+                    Back to Chat
+                  </Link>
                   {a.sourceHref && (
                     <Link href={a.sourceHref} className={act}>
                       Open source

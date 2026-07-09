@@ -124,7 +124,8 @@ export interface AgentProgressEvent {
     | "searching"
     | "reading"
     | "answering"
-    | "cleanup";
+    | "cleanup"
+    | "stopped";
   message: string;
   elapsedMs?: number;
 }

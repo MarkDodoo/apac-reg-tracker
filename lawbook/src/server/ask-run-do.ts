@@ -31,7 +31,7 @@ const PROVIDER_KEYS = [
   "ZAI_API_KEY",
 ];
 
-type RunStatus = "idle" | "running" | "done" | "error";
+type RunStatus = "idle" | "running" | "done" | "error" | "stopped";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -52,6 +52,9 @@ export class AskRunDO extends DurableObject<AskRunEnv> {
       const from =
         Number.parseInt(url.searchParams.get("from") ?? "0", 10) || 0;
       return this.handleStream(from);
+    }
+    if (req.method === "POST" && url.pathname.endsWith("/stop")) {
+      return this.handleStop();
     }
     if (url.pathname.endsWith("/status")) {
       return Response.json({
@@ -106,6 +109,44 @@ export class AskRunDO extends DurableObject<AskRunEnv> {
     return Response.json({ ok: true, status: await this.status() });
   }
 
+  /** Idempotent: marks the run stopped and tears down its sandbox if known. */
+  private async handleStop(): Promise<Response> {
+    const status = await this.status();
+    if (status !== "done" && status !== "error" && status !== "stopped") {
+      this.appendEvents([
+        {
+          type: "progress",
+          phase: "stopped",
+          message: "Research exited by request.",
+          elapsedMs: await this.elapsedMs(),
+        },
+      ]);
+      await this.ctx.storage.put("status", "stopped" satisfies RunStatus);
+    }
+
+    const sid = await this.ctx.storage.get<string>("sandboxId");
+    const gw = this.env.CUBESANDBOX_GATEWAY_URL;
+    const key = this.env.CUBESANDBOX_TENANT_KEY;
+    if (sid && gw && key) {
+      await new CubeSandbox({ gatewayUrl: gw, tenantKey: key }).deleteSandbox(
+        sid,
+      );
+      await this.ctx.storage.delete("sandboxId");
+    }
+
+    return Response.json({ ok: true, status: await this.status() });
+  }
+
+  private async elapsedMs(): Promise<number> {
+    const startedAt =
+      (await this.ctx.storage.get<number>("startedAt")) ?? Date.now();
+    return Math.max(0, Date.now() - startedAt);
+  }
+
+  private async isStopped(): Promise<boolean> {
+    return (await this.status()) === "stopped";
+  }
+
   /** Runs the whole graff loop once; survives client disconnect. */
   async alarm(): Promise<void> {
     // Guard against a duplicate alarm re-entering the loop.
@@ -138,23 +179,44 @@ export class AskRunDO extends DurableObject<AskRunEnv> {
     const sandbox = new CubeSandbox({ gatewayUrl: gw, tenantKey: key });
     const run = new GraffRun(startedAt);
     try {
-      this.appendEvents(
-        await run.launch(sandbox, { model, providerEnv, prompt, systemPrompt }),
+      if (await this.isStopped()) return;
+      const launchEvents = await run.launch(
+        sandbox,
+        { model, providerEnv, prompt, systemPrompt },
+        async (sid) => {
+          await this.ctx.storage.put("sandboxId", sid);
+          if (await this.isStopped()) {
+            await sandbox.deleteSandbox(sid);
+            throw new Error("stopped");
+          }
+        },
       );
+      if (await this.isStopped()) return;
+      this.appendEvents(launchEvents);
+      let sawError = launchEvents.some((ev) => ev.type === "error");
       while (!run.done) {
+        if (await this.isStopped()) break;
         const events = await run.poll(sandbox);
+        if (events.some((ev) => ev.type === "error")) sawError = true;
         if (events.length) this.appendEvents(events);
-        if (run.done) break;
+        if (run.done || (await this.isStopped())) break;
         await sleep(750);
       }
-      await this.ctx.storage.put("status", "done" satisfies RunStatus);
+      if (!(await this.isStopped())) {
+        await this.ctx.storage.put(
+          "status",
+          (sawError ? "error" : "done") satisfies RunStatus,
+        );
+      }
     } catch (e) {
+      if (await this.isStopped()) return;
       this.appendEvents([
         { type: "error", message: e instanceof Error ? e.message : String(e) },
       ]);
       await this.ctx.storage.put("status", "error" satisfies RunStatus);
     } finally {
       if (run.sandboxId) await sandbox.deleteSandbox(run.sandboxId);
+      await this.ctx.storage.delete("sandboxId");
     }
   }
 
@@ -184,7 +246,7 @@ export class AskRunDO extends DurableObject<AskRunEnv> {
               cursor = Number(r.idx) + 1;
             }
             const s = await status();
-            if (s === "done" || s === "error") {
+            if (s === "done" || s === "error" || s === "stopped") {
               const more = ctx.storage.sql
                 .exec("SELECT COUNT(*) AS c FROM events WHERE idx >= ?", cursor)
                 .one();

@@ -172,6 +172,7 @@ function formatElapsed(ms: number): string {
 }
 
 function mapProgressPhase(phase: string): Phase {
+  if (phase === "stopped") return "stopped";
   if (
     phase === "sandbox_start" ||
     phase === "agent_install" ||
@@ -182,6 +183,18 @@ function mapProgressPhase(phase: string): Phase {
   if (phase === "reading") return "reading";
   if (phase === "answering") return "answering";
   return "thinking";
+}
+
+function stopBackendRun(runId: string | null, threadId: string): void {
+  if (!runId || !threadId) return;
+  void fetch("/api/ask/stop", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ runId, threadId }),
+    keepalive: true,
+  }).catch(() => {
+    // best-effort cancellation; the local UI still exits immediately
+  });
 }
 
 /* ── Markdown answer rendering (react-markdown + GFM) ───────────────── */
@@ -458,6 +471,27 @@ function shortTitle(question: string): string {
   return (title || question.trim()).slice(0, 60) || "Untitled";
 }
 
+function serializeMessages(messages: Message[]) {
+  return messages.map((m) => ({
+    id: m.id,
+    role: m.role,
+    text: m.text,
+    tools: m.tools,
+    progress: m.progress,
+    phase: m.phase,
+    startedAt: m.startedAt,
+    elapsedMs: m.elapsedMs,
+    cost: m.cost,
+    error: m.error,
+  }));
+}
+
+function isLiveAssistant(m: Message): boolean {
+  return (
+    m.role === "assistant" && !["done", "error", "stopped"].includes(m.phase)
+  );
+}
+
 export function AskAgent({
   initialContext,
   initialThreadId,
@@ -610,9 +644,11 @@ export function AskAgent({
     const match = /^(?:answer|message)-(\d+)$/.exec(hash);
     if (match) {
       const id = Number(match[1]);
-      const target = document.getElementById(`ask-message-${id}`);
+      const target =
+        document.getElementById(`answer-${id}`) ??
+        document.getElementById(`ask-message-${id}`);
       if (target) {
-        target.scrollIntoView({ block: "center" });
+        target.scrollIntoView({ block: "start" });
         setHighlightedMessageId(id);
         const timer = window.setTimeout(() => {
           setHighlightedMessageId((current) =>
@@ -681,10 +717,18 @@ export function AskAgent({
   );
 
   const stop = useCallback(() => {
+    const stoppedRunId = runIdRef.current;
     queueingOpenRef.current = false;
+    stopBackendRun(stoppedRunId, threadIdRef.current);
     abortRef.current?.abort();
     abortRef.current = null;
     setBusy(false);
+    runIdRef.current = null;
+    try {
+      sessionStorage.removeItem("ask:activeRun");
+    } catch {
+      /* ignore */
+    }
     setMessages((ms) =>
       ms.map((m) =>
         m.role === "assistant" &&
@@ -696,7 +740,7 @@ export function AskAgent({
                 ...m.progress,
                 {
                   id: toolId.current++,
-                  message: "Research stopped by you.",
+                  message: "Research exited by request.",
                   elapsedMs: m.startedAt ? Date.now() - m.startedAt : undefined,
                 },
               ],
@@ -772,33 +816,56 @@ export function AskAgent({
         setQuestionHistory((history) => mergeQuestionHistory(history, q));
       }
 
-      const userMsg: Message = {
-        id: msgId.current++,
-        role: "user",
-        text: q,
-        tools: [],
-        progress: [],
-        phase: "done",
-      };
-      const aId = msgId.current++;
-      const startedAt = Date.now();
-      const assistantMsg: Message = {
-        id: aId,
-        role: "assistant",
-        text: "",
-        tools: [],
-        progress: [
-          {
-            id: toolId.current++,
-            message: "Connecting to the research agent…",
-            elapsedMs: 0,
-          },
-        ],
-        startedAt,
-        phase: "starting",
-      };
-      setMessages((m) => [...m, userMsg, assistantMsg]);
+      const existing = resumeRunId ? messagesRef.current : [];
+      const existingAssistant = existing[existing.length - 1];
+      const existingUser = existing[existing.length - 2];
+      const reuseRunningAssistant = Boolean(
+        resumeRunId &&
+          existingAssistant &&
+          existingUser &&
+          isLiveAssistant(existingAssistant) &&
+          existingUser.role === "user" &&
+          existingUser.text.trim() === q,
+      );
+
+      const userMsg: Message = reuseRunningAssistant
+        ? (existingUser as Message)
+        : {
+            id: msgId.current++,
+            role: "user",
+            text: q,
+            tools: [],
+            progress: [],
+            phase: "done",
+          };
+      const aId = reuseRunningAssistant
+        ? (existingAssistant as Message).id
+        : msgId.current++;
+      const startedAt = reuseRunningAssistant
+        ? ((existingAssistant as Message).startedAt ?? Date.now())
+        : Date.now();
+      const assistantMsg: Message = reuseRunningAssistant
+        ? (existingAssistant as Message)
+        : {
+            id: aId,
+            role: "assistant",
+            text: "",
+            tools: [],
+            progress: [
+              {
+                id: toolId.current++,
+                message: "Connecting to the research agent…",
+                elapsedMs: 0,
+              },
+            ],
+            startedAt,
+            phase: "starting",
+          };
+      if (!reuseRunningAssistant) {
+        setMessages((m) => [...m, userMsg, assistantMsg]);
+      }
       if (
+        !reuseRunningAssistant &&
         messagesRef.current.length === 0 &&
         typeof window !== "undefined" &&
         window.location.pathname === "/ask"
@@ -834,23 +901,21 @@ export function AskAgent({
         // (and reconnect to the live run) while it's still researching — not
         // only once it settles. Fresh runs only; reconnects already exist.
         if (isSignedIn && !resumeRunId) {
-          const priorPlusUser = [...messagesRef.current, userMsg].map((m) => ({
-            id: m.id,
-            role: m.role,
-            text: m.text,
-            tools: m.tools,
-            phase: m.phase,
-          }));
+          const runningTranscript = serializeMessages([
+            ...messagesRef.current,
+            userMsg,
+            assistantMsg,
+          ]);
           const startTitle = shortTitle(
             messagesRef.current.find((m) => m.role === "user")?.text ?? q,
           );
-          void fetch("/api/ask-threads", {
+          await fetch("/api/ask-threads", {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
               id: threadIdRef.current,
               title: startTitle,
-              messages: priorPlusUser,
+              messages: runningTranscript,
               cite: pinnedContext?.citation,
               kind: pinnedContext?.kind,
               sourceHref: pinnedContext?.href,
@@ -1031,6 +1096,37 @@ export function AskAgent({
   if (!threadIdRef.current)
     threadIdRef.current = initialThreadId ?? crypto.randomUUID();
 
+  const flushRunningThread = useCallback(() => {
+    const snapshot = messagesRef.current;
+    if (!isSignedIn || snapshot.length === 0) return;
+    if (!snapshot.some((m) => m.role === "user")) return;
+
+    const running = snapshot.some(isLiveAssistant);
+    if (!running) return;
+
+    void fetch("/api/ask-threads", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      keepalive: true,
+      body: JSON.stringify({
+        id: threadIdRef.current,
+        title: shortTitle(snapshot.find((m) => m.role === "user")?.text ?? ""),
+        messages: serializeMessages(snapshot),
+        cite: pinnedContext?.citation,
+        kind: pinnedContext?.kind,
+        sourceHref: pinnedContext?.href,
+        runId: runIdRef.current ?? undefined,
+        status: "running",
+      }),
+    }).catch(() => {
+      // best-effort flush before detaching from a running research stream
+    });
+  }, [isSignedIn, pinnedContext]);
+
+  useEffect(() => {
+    return () => flushRunningThread();
+  }, [flushRunningThread]);
+
   // Reconnect to a DO-hosted run still going after the user navigated away.
   const reconnectedRef = useRef(false);
   useEffect(() => {
@@ -1056,54 +1152,60 @@ export function AskAgent({
     }
   }, [isSignedIn, initialThreadId]);
 
-  // Autosave the thread shortly after each turn settles (signed-in only).
+  // Autosave both settled and in-flight transcripts so navigating away or
+  // starting another chat can later reopen the same running research with its
+  // latest visible progress instead of a blank "0s" state.
   useEffect(() => {
-    if (!isSignedIn || busy) return;
-    const hasAnswer = messages.some(
-      (m) =>
-        m.role === "assistant" && (m.text.length > 0 || m.phase === "error"),
-    );
-    if (!hasAnswer) return;
+    if (!isSignedIn || messages.length === 0) return;
+    if (!messages.some((m) => m.role === "user")) return;
+
     const title = shortTitle(
       messages.find((m) => m.role === "user")?.text ?? "",
     );
-    const persisted = messages.map((m) => ({
-      id: m.id,
-      role: m.role,
-      text: m.text,
-      tools: m.tools,
-      phase: m.phase,
-      cost: m.cost,
-      error: m.error,
-    }));
+    const persisted = serializeMessages(messages);
+    const latestAssistant = [...messages]
+      .reverse()
+      .find((m) => m.role === "assistant");
+    const running = messages.some(isLiveAssistant);
+    const status = running
+      ? "running"
+      : latestAssistant?.phase === "stopped"
+        ? "stopped"
+        : "done";
     const id = threadIdRef.current;
-    const ac = new AbortController();
-    const timer = window.setTimeout(() => {
-      void fetch("/api/ask-threads", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          id,
-          title,
-          messages: persisted,
-          cite: pinnedContext?.citation,
-          kind: pinnedContext?.kind,
-          sourceHref: pinnedContext?.href,
-          runId: runIdRef.current ?? undefined,
-          status: "done",
-        }),
-        signal: ac.signal,
-      }).catch(() => {
-        // best-effort autosave
-      });
-    }, 900);
-    return () => {
-      window.clearTimeout(timer);
-      ac.abort();
-    };
-  }, [messages, busy, isSignedIn, pinnedContext]);
+    const runId = running ? (runIdRef.current ?? undefined) : undefined;
+    const timer = window.setTimeout(
+      () => {
+        void fetch("/api/ask-threads", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            id,
+            title,
+            messages: persisted,
+            cite: pinnedContext?.citation,
+            kind: pinnedContext?.kind,
+            sourceHref: pinnedContext?.href,
+            runId,
+            status,
+          }),
+        }).catch(() => {
+          // best-effort autosave
+        });
+      },
+      running ? 1200 : 300,
+    );
+    return () => window.clearTimeout(timer);
+  }, [messages, isSignedIn, pinnedContext]);
 
   const newChat = useCallback(() => {
+    // Detach this UI stream only. Durable Object-backed research keeps running
+    // in the background; explicit Stop is the only path that cancels backend work.
+    flushRunningThread();
+    queuedPromptRef.current = null;
+    pendingSendAfterCleanupRef.current = null;
+    queueingOpenRef.current = false;
+    activeRef.current = false;
     abortRef.current?.abort();
     setBusy(false);
     setMessages([]);
@@ -1120,66 +1222,88 @@ export function AskAgent({
     } catch {
       /* ignore */
     }
-  }, [clearDraft, clearQueuedPrompt]);
+  }, [clearDraft, clearQueuedPrompt, flushRunningThread]);
 
-  const loadThread = useCallback(async (threadId: string) => {
-    try {
-      const res = await fetch(
-        `/api/ask-threads?id=${encodeURIComponent(threadId)}`,
-      );
-      if (!res.ok) return;
-      const data = (await res.json()) as {
-        thread?: {
-          runId?: string | null;
-          status?: string | null;
-          messages?: Array<{
-            id?: number;
-            role?: string;
-            text?: string;
-            tools?: ToolStep[];
-            phase?: Phase;
-            cost?: { usd: number; tokens: number };
-            error?: string;
-          }>;
+  const loadThread = useCallback(
+    async (threadId: string) => {
+      flushRunningThread();
+      try {
+        const res = await fetch(
+          `/api/ask-threads?id=${encodeURIComponent(threadId)}`,
+        );
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          thread?: {
+            runId?: string | null;
+            status?: string | null;
+            messages?: Array<{
+              id?: number;
+              role?: string;
+              text?: string;
+              tools?: ToolStep[];
+              progress?: ProgressStep[];
+              phase?: Phase;
+              startedAt?: number;
+              elapsedMs?: number;
+              cost?: { usd: number; tokens: number };
+              error?: string;
+            }>;
+          };
         };
-      };
-      const raw = data.thread?.messages ?? [];
-      const loaded: Message[] = raw.map((m, i) => ({
-        id: typeof m.id === "number" ? m.id : i,
-        role: m.role === "user" ? "user" : "assistant",
-        text: typeof m.text === "string" ? m.text : "",
-        tools: Array.isArray(m.tools) ? m.tools : [],
-        progress: [],
-        phase: m.phase ?? "done",
-        cost: m.cost,
-        error: m.error,
-      }));
-      abortRef.current?.abort();
-      msgId.current = loaded.reduce((mx, m) => Math.max(mx, m.id), 0) + 1;
-      threadIdRef.current = threadId;
+        const raw = data.thread?.messages ?? [];
+        const loaded: Message[] = raw.map((m, i) => ({
+          id: typeof m.id === "number" ? m.id : i,
+          role: m.role === "user" ? "user" : "assistant",
+          text: typeof m.text === "string" ? m.text : "",
+          tools: Array.isArray(m.tools) ? m.tools : [],
+          progress: Array.isArray(m.progress) ? m.progress : [],
+          phase: m.phase ?? "done",
+          startedAt: typeof m.startedAt === "number" ? m.startedAt : undefined,
+          elapsedMs: typeof m.elapsedMs === "number" ? m.elapsedMs : undefined,
+          cost: m.cost,
+          error: m.error,
+        }));
+        abortRef.current?.abort();
+        msgId.current = loaded.reduce((mx, m) => Math.max(mx, m.id), 0) + 1;
+        threadIdRef.current = threadId;
 
-      // Still researching? Reconnect to the live Durable Object run rather than
-      // showing a frozen transcript. We persisted [...prior, runningUserMsg] at
-      // start, so drop that trailing user turn and let send() re-add it and tail
-      // the DO stream from the beginning (replay + live). This is what makes a
-      // running thread visible in the owner's other tabs.
-      const last = loaded[loaded.length - 1];
-      const runId = data.thread?.runId;
-      if (data.thread?.status === "running" && runId && last?.role === "user") {
-        activeRef.current = false;
-        runIdRef.current = runId;
-        setBusy(true);
-        setMessages(loaded.slice(0, -1));
-        void sendRef.current?.(last.text, runId);
-        return;
+        // Still researching? Show the persisted in-flight transcript immediately,
+        // then reconnect to the same run. Newer rows include the assistant
+        // placeholder/progress; legacy rows only have the trailing user, so keep
+        // that fallback for older saved running threads.
+        const last = loaded[loaded.length - 1];
+        const runId = data.thread?.runId;
+        if (data.thread?.status === "running" && runId) {
+          activeRef.current = false;
+          runIdRef.current = runId;
+          if (last && isLiveAssistant(last)) {
+            const user = [...loaded]
+              .reverse()
+              .find((m) => m.role === "user" && m.text.trim());
+            setMessages(loaded);
+            if (user) {
+              window.setTimeout(() => {
+                void sendRef.current?.(user.text, runId);
+              }, 0);
+            }
+            return;
+          }
+          if (last?.role === "user") {
+            setBusy(true);
+            setMessages(loaded.slice(0, -1));
+            void sendRef.current?.(last.text, runId);
+            return;
+          }
+        }
+
+        setBusy(false);
+        setMessages(loaded);
+      } catch {
+        // ignore load failures
       }
-
-      setBusy(false);
-      setMessages(loaded);
-    } catch {
-      // ignore load failures
-    }
-  }, []);
+    },
+    [flushRunningThread],
+  );
 
   // Opened at /ask/[id]: restore that saved conversation on mount.
   const loadedThreadRef = useRef(false);
@@ -1320,6 +1444,10 @@ export function AskAgent({
     </>
   );
 
+  const liveAssistantThreadId = messages.some(isLiveAssistant)
+    ? threadIdRef.current
+    : null;
+
   return (
     <div className="flex flex-col">
       {isSignedIn && (
@@ -1327,7 +1455,7 @@ export function AskAgent({
           open={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           activeId={threadIdRef.current}
-          busyId={busy ? threadIdRef.current : null}
+          busyId={liveAssistantThreadId}
           onResume={(id) => {
             void loadThread(id);
             if (typeof window !== "undefined") {
@@ -1606,10 +1734,16 @@ function ThreadSidebar({
                     <span className="truncate text-[13px]">
                       {t.title || "Untitled"}
                     </span>
-                    {(t.id === busyId || t.status === "running") && (
+                    {t.id === busyId && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-accent">
                         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
                         researching…
+                      </span>
+                    )}
+                    {t.id !== busyId && t.status === "stopped" && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-amber-700">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                        exited
                       </span>
                     )}
                   </button>
@@ -1655,8 +1789,9 @@ function AnswerActions({
 }) {
   const [copied, setCopied] = useState(false);
   const [saveState, setSaveState] = useState<
-    "idle" | "saving" | "saved" | "error"
+    "idle" | "saving" | "saved" | "unsaving" | "error"
   >("idle");
+  const [savedAnswerId, setSavedAnswerId] = useState<string | null>(null);
 
   async function copy() {
     try {
@@ -1684,7 +1819,7 @@ function AnswerActions({
   }
 
   async function save() {
-    if (saveState === "saving" || saveState === "saved") return;
+    if (saveState === "saving" || saveState === "unsaving") return;
     setSaveState("saving");
     try {
       const res = await fetch("/api/saved-answers", {
@@ -1701,33 +1836,71 @@ function AnswerActions({
           tools,
         }),
       });
-      setSaveState(res.ok ? "saved" : "error");
+      const data = (await res.json().catch(() => null)) as {
+        saved?: { id?: string };
+      } | null;
+
+      if (res.ok && data?.saved?.id) {
+        setSavedAnswerId(data.saved.id);
+        setSaveState("saved");
+      } else {
+        setSaveState("error");
+      }
     } catch {
       setSaveState("error");
     }
+  }
+
+  async function unsave() {
+    if (saveState === "saving" || saveState === "unsaving" || !savedAnswerId)
+      return;
+
+    setSaveState("unsaving");
+    try {
+      const res = await fetch(
+        `/api/saved-answers?id=${encodeURIComponent(savedAnswerId)}`,
+        { method: "DELETE" },
+      );
+
+      if (res.ok) {
+        setSavedAnswerId(null);
+        setSaveState("idle");
+      } else {
+        setSaveState("saved");
+      }
+    } catch {
+      setSaveState("saved");
+    }
+  }
+
+  function toggleSaved() {
+    if (saveState === "saved") void unsave();
+    else void save();
   }
 
   const btn =
     "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-2 transition-colors hover:bg-surface-2 hover:text-foreground";
 
   return (
-    <div className="flex flex-wrap items-center gap-1 border-t border-border/60 pt-2">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/60 pt-2">
       {isSignedIn ? (
         <button
           type="button"
-          onClick={save}
+          onClick={toggleSaved}
           className={btn}
-          aria-label="Save answer"
-          disabled={saveState === "saving"}
+          aria-label={saveState === "saved" ? "Unsave answer" : "Save answer"}
+          disabled={saveState === "saving" || saveState === "unsaving"}
         >
           <BookIcon className="h-3.5 w-3.5" />
           {saveState === "saved"
             ? "Saved"
             : saveState === "saving"
               ? "Saving…"
-              : saveState === "error"
-                ? "Retry save"
-                : "Save"}
+              : saveState === "unsaving"
+                ? "Unsaving…"
+                : saveState === "error"
+                  ? "Retry save"
+                  : "Save"}
         </button>
       ) : (
         <Link href={signInHref} className={btn}>
@@ -1886,8 +2059,9 @@ function AssistantMessage({
         {/* Answer body */}
         {m.text && (
           <Bubble
+            id={`answer-${messageId}`}
             variant="assistant"
-            className="space-y-3 px-4 py-3 font-serif text-[15px] leading-relaxed"
+            className="scroll-mt-24 space-y-3 px-4 py-3 font-serif text-[15px] leading-relaxed"
           >
             <AnswerMarkdown text={m.text} />
             {live && (
@@ -1899,7 +2073,7 @@ function AssistantMessage({
         {/* Stopped / error */}
         {m.phase === "stopped" && (
           <p className="w-fit rounded-2xl rounded-bl-md bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
-            Research stopped. Any partial answer above may be incomplete.
+            Research exited. Any partial answer above may be incomplete.
           </p>
         )}
         {m.phase === "error" && m.error && (

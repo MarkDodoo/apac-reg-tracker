@@ -38,6 +38,12 @@ export async function POST(req: Request): Promise<Response> {
   const kind = cleanText(body.kind, 40) || undefined;
   const rawHref = cleanText(body.sourceHref, 800);
   const sourceHref = rawHref.startsWith("/") ? rawHref : undefined;
+  const threadId = cleanText(body.threadId, 120) || undefined;
+  const rawMessageId = body.messageId;
+  const messageId =
+    typeof rawMessageId === "number" && Number.isFinite(rawMessageId)
+      ? Math.max(0, Math.trunc(rawMessageId))
+      : undefined;
   const tools = Array.isArray(body.tools)
     ? body.tools.filter((t): t is string => typeof t === "string")
     : undefined;
@@ -52,6 +58,8 @@ export async function POST(req: Request): Promise<Response> {
         cite,
         kind,
         sourceHref,
+        threadId,
+        messageId,
         tools,
       }),
     },

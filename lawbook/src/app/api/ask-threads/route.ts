@@ -51,8 +51,10 @@ export async function POST(req: Request): Promise<Response> {
   const rawHref = clean(body.sourceHref, 800);
   const sourceHref = rawHref.startsWith("/") ? rawHref : undefined;
   const runId = clean(body.runId, 100) || undefined;
-  // Only 'running' is meaningful from the client; everything else settles to done.
-  const status = body.status === "running" ? "running" : "done";
+  const status =
+    body.status === "running" || body.status === "stopped"
+      ? body.status
+      : "done";
 
   // Ownership is always the session user — never a client-supplied id.
   const saved = await saveThread({

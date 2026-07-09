@@ -13,7 +13,7 @@ export interface ThreadSummary {
   messageCount: number;
   updatedAt: number;
   runId: string | null;
-  status: string | null; // 'running' | 'done' | null (legacy = done)
+  status: string | null; // 'running' | 'stopped' | 'done' | null (legacy = done)
 }
 
 export interface ThreadDetail extends ThreadSummary {
@@ -65,14 +65,49 @@ export async function saveThread(input: {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          title = excluded.title,
-         messages = excluded.messages,
-         messageCount = excluded.messageCount,
+         messages = CASE
+           WHEN excluded.status = 'running'
+             AND ask_threads.status IS NOT NULL
+             AND ask_threads.status != 'running'
+             AND excluded.messageCount <= ask_threads.messageCount
+           THEN ask_threads.messages
+           ELSE excluded.messages
+         END,
+         messageCount = CASE
+           WHEN excluded.status = 'running'
+             AND ask_threads.status IS NOT NULL
+             AND ask_threads.status != 'running'
+             AND excluded.messageCount <= ask_threads.messageCount
+           THEN ask_threads.messageCount
+           ELSE excluded.messageCount
+         END,
          cite = excluded.cite,
          kind = excluded.kind,
          sourceHref = excluded.sourceHref,
-         runId = excluded.runId,
-         status = excluded.status,
-         updatedAt = excluded.updatedAt
+         runId = CASE
+           WHEN excluded.status = 'running'
+             AND ask_threads.status IS NOT NULL
+             AND ask_threads.status != 'running'
+             AND excluded.messageCount <= ask_threads.messageCount
+           THEN ask_threads.runId
+           ELSE excluded.runId
+         END,
+         status = CASE
+           WHEN excluded.status = 'running'
+             AND ask_threads.status IS NOT NULL
+             AND ask_threads.status != 'running'
+             AND excluded.messageCount <= ask_threads.messageCount
+           THEN ask_threads.status
+           ELSE excluded.status
+         END,
+         updatedAt = CASE
+           WHEN excluded.status = 'running'
+             AND ask_threads.status IS NOT NULL
+             AND ask_threads.status != 'running'
+             AND excluded.messageCount <= ask_threads.messageCount
+           THEN ask_threads.updatedAt
+           ELSE excluded.updatedAt
+         END
        WHERE ask_threads.userId = excluded.userId`,
     )
     .bind(
