@@ -883,7 +883,12 @@ export function AskAgent({
   }, [stop]);
 
   const send = useCallback(
-    async (text: string, resumeRunId?: string, resumeFrom = 0) => {
+    async (
+      text: string,
+      resumeRunId?: string,
+      resumeFrom = 0,
+      resumeStartedAt?: number,
+    ) => {
       const q = text.trim();
       if (!q) return;
 
@@ -972,8 +977,10 @@ export function AskAgent({
         ? (existingAssistant as Message).id
         : msgId.current++;
       const startedAt = reuseRunningAssistant
-        ? ((existingAssistant as Message).startedAt ?? Date.now())
-        : Date.now();
+        ? ((existingAssistant as Message).startedAt ??
+          resumeStartedAt ??
+          Date.now())
+        : (resumeStartedAt ?? Date.now());
       const assistantMsg: Message = reuseRunningAssistant
         ? (existingAssistant as Message)
         : {
@@ -984,8 +991,12 @@ export function AskAgent({
             progress: [
               {
                 id: toolId.current++,
-                message: "Connecting to the research agent…",
-                elapsedMs: 0,
+                message: resumeRunId
+                  ? "Reconnecting to the research agent…"
+                  : "Connecting to the research agent…",
+                elapsedMs: resumeRunId
+                  ? Math.max(0, Date.now() - startedAt)
+                  : 0,
               },
             ],
             startedAt,
@@ -1128,19 +1139,26 @@ export function AskAgent({
                 patch((m) => ({ ...m, text: acc }));
                 break;
               case "progress":
-                patch((m) => ({
-                  ...m,
-                  phase: mapProgressPhase(ev.phase),
-                  elapsedMs: ev.elapsedMs,
-                  progress: [
-                    ...m.progress,
-                    {
-                      id: toolId.current++,
-                      message: ev.message,
-                      elapsedMs: ev.elapsedMs,
-                    },
-                  ].slice(-6),
-                }));
+                patch((m) => {
+                  const serverStartedAt =
+                    typeof ev.elapsedMs === "number"
+                      ? Date.now() - ev.elapsedMs
+                      : undefined;
+                  return {
+                    ...m,
+                    phase: mapProgressPhase(ev.phase),
+                    startedAt: serverStartedAt ?? m.startedAt,
+                    elapsedMs: ev.elapsedMs,
+                    progress: [
+                      ...m.progress,
+                      {
+                        id: toolId.current++,
+                        message: ev.message,
+                        elapsedMs: ev.elapsedMs,
+                      },
+                    ].slice(-6),
+                  };
+                });
                 break;
               case "tool": {
                 const step = describeTool(ev);
@@ -1173,6 +1191,9 @@ export function AskAgent({
                           ...m,
                           text: ev.text || acc,
                           phase: "done",
+                          elapsedMs: m.startedAt
+                            ? Date.now() - m.startedAt
+                            : m.elapsedMs,
                           cost: { usd: ev.costUsd, tokens: ev.contextTokens },
                         }
                       : m,
@@ -1381,7 +1402,7 @@ export function AskAgent({
           window.history.replaceState(null, "", `/ask/${ar.threadId}`);
         }
       }
-      void sendRef.current?.(ar.question, ar.runId);
+      void sendRef.current?.(ar.question, ar.runId, 0, ar.startedAt);
     } catch {
       // ignore reconnect failures
     }
@@ -1486,26 +1507,29 @@ export function AskAgent({
     [clearDraft, clearQueuedPrompt],
   );
 
-  const newChat = useCallback(async () => {
+  const newChat = useCallback(() => {
     if (creatingNewChatRef.current) return;
     creatingNewChatRef.current = true;
-    try {
-      // Save the current transcript before switching when possible, but never
-      // make the New chat button unusable because of a transient persistence
-      // failure. Autosave/start-save are best-effort too; users must always be
-      // able to detach from the current stream and begin again.
-      const saved = await persistThreadSnapshot();
-      if (!saved) {
-        console.warn("Failed to persist current ask thread before New chat");
-      }
 
-      // Detach this UI stream only. Durable Object-backed research keeps running
-      // in the background; explicit Stop is the only path that cancels backend work.
-      resetChatState({ createPlaceholder: true });
-      setSidebarOpen(true);
-    } finally {
-      creatingNewChatRef.current = false;
-    }
+    // Kick off a best-effort save of the current transcript, but do not await
+    // it: a failed or stalled persistence request must never make the New chat
+    // button unusable. The visible snapshot is captured before resetChatState
+    // swaps to a fresh thread; running threads are also saved at run start.
+    const snapshot = messagesRef.current;
+    void persistThreadSnapshot(snapshot)
+      .then((saved) => {
+        if (!saved) {
+          console.warn("Failed to persist current ask thread before New chat");
+        }
+      })
+      .finally(() => {
+        creatingNewChatRef.current = false;
+      });
+
+    // Detach this UI stream only. Durable Object-backed research keeps running
+    // in the background; explicit Stop is the only path that cancels backend work.
+    resetChatState({ createPlaceholder: true });
+    setSidebarOpen(true);
   }, [persistThreadSnapshot, resetChatState]);
 
   const deleteActiveChat = useCallback(
