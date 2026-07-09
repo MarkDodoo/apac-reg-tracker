@@ -572,6 +572,128 @@ function collapseDuplicateRunningTurns(messages: Message[]): Message[] {
   return messages.filter((_, index) => !remove.has(index));
 }
 
+interface ThreadListItem {
+  id: string;
+  title: string;
+  updatedAt: number;
+  status?: string | null;
+  unread?: boolean;
+}
+
+interface LocalThreadSnapshot {
+  id: string;
+  title: string;
+  updatedAt: number;
+  messages: ReturnType<typeof serializeMessages>;
+  runId?: string | null;
+  status?: "running" | "stopped" | "done";
+  context?: ChatContext;
+}
+
+function readLocalThreadSnapshots(): LocalThreadSnapshot[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(
+      localStorage.getItem(THREAD_SNAPSHOT_CACHE_KEY) ?? "[]",
+    );
+    return Array.isArray(parsed) ? (parsed as LocalThreadSnapshot[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalThreadSnapshots(snapshots: LocalThreadSnapshot[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(
+      THREAD_SNAPSHOT_CACHE_KEY,
+      JSON.stringify(snapshots.slice(0, 50)),
+    );
+  } catch {
+    // Best-effort browser cache only.
+  }
+}
+
+function localThreadSummaries(): ThreadListItem[] {
+  return readLocalThreadSnapshots().map((snapshot) => ({
+    id: snapshot.id,
+    title: snapshot.title,
+    updatedAt: snapshot.updatedAt,
+    status: snapshot.status,
+  }));
+}
+
+function getLocalThreadSnapshot(id: string): LocalThreadSnapshot | null {
+  return (
+    readLocalThreadSnapshots().find((snapshot) => snapshot.id === id) ?? null
+  );
+}
+
+function upsertLocalThreadSnapshot(snapshot: LocalThreadSnapshot): void {
+  const snapshots = readLocalThreadSnapshots().filter(
+    (existing) => existing.id !== snapshot.id,
+  );
+  writeLocalThreadSnapshots(
+    [snapshot, ...snapshots].sort((a, b) => b.updatedAt - a.updatedAt),
+  );
+  try {
+    localStorage.setItem(LAST_THREAD_ID_KEY, snapshot.id);
+  } catch {
+    // Best-effort browser cache only.
+  }
+}
+
+function removeLocalThreadSnapshot(id: string): void {
+  writeLocalThreadSnapshots(
+    readLocalThreadSnapshots().filter((snapshot) => snapshot.id !== id),
+  );
+  try {
+    if (localStorage.getItem(LAST_THREAD_ID_KEY) === id) {
+      localStorage.removeItem(LAST_THREAD_ID_KEY);
+    }
+  } catch {
+    // Best-effort browser cache only.
+  }
+}
+
+function deserializeLocalMessages(raw: unknown[]): Message[] {
+  return raw.map((m, i): Message => {
+    const row =
+      m && typeof m === "object" ? (m as Record<string, unknown>) : {};
+    const role = row.role === "user" ? "user" : "assistant";
+    return {
+      id: typeof row.id === "number" ? row.id : i,
+      role,
+      text: typeof row.text === "string" ? row.text : "",
+      tools: Array.isArray(row.tools) ? (row.tools as ToolStep[]) : [],
+      progress: Array.isArray(row.progress)
+        ? (row.progress as ProgressStep[])
+        : [],
+      phase:
+        row.phase === "starting" ||
+        row.phase === "sandbox" ||
+        row.phase === "searching" ||
+        row.phase === "reading" ||
+        row.phase === "thinking" ||
+        row.phase === "answering" ||
+        row.phase === "done" ||
+        row.phase === "stopped" ||
+        row.phase === "error"
+          ? row.phase
+          : "done",
+      startedAt: typeof row.startedAt === "number" ? row.startedAt : undefined,
+      elapsedMs: typeof row.elapsedMs === "number" ? row.elapsedMs : undefined,
+      eventCursor:
+        typeof row.eventCursor === "number" ? row.eventCursor : undefined,
+      cost:
+        row.cost && typeof row.cost === "object"
+          ? (row.cost as { usd: number; tokens: number })
+          : undefined,
+      error: typeof row.error === "string" ? row.error : undefined,
+    };
+  });
+}
+
 export function AskAgent({
   initialContext,
   initialThreadId,
@@ -2269,128 +2391,6 @@ export function AskAgent({
       )}
     </div>
   );
-}
-
-interface ThreadListItem {
-  id: string;
-  title: string;
-  updatedAt: number;
-  status?: string | null;
-  unread?: boolean;
-}
-
-interface LocalThreadSnapshot {
-  id: string;
-  title: string;
-  updatedAt: number;
-  messages: ReturnType<typeof serializeMessages>;
-  runId?: string | null;
-  status?: "running" | "stopped" | "done";
-  context?: ChatContext;
-}
-
-function readLocalThreadSnapshots(): LocalThreadSnapshot[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const parsed = JSON.parse(
-      localStorage.getItem(THREAD_SNAPSHOT_CACHE_KEY) ?? "[]",
-    );
-    return Array.isArray(parsed) ? (parsed as LocalThreadSnapshot[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeLocalThreadSnapshots(snapshots: LocalThreadSnapshot[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(
-      THREAD_SNAPSHOT_CACHE_KEY,
-      JSON.stringify(snapshots.slice(0, 50)),
-    );
-  } catch {
-    // Best-effort browser cache only.
-  }
-}
-
-function localThreadSummaries(): ThreadListItem[] {
-  return readLocalThreadSnapshots().map((snapshot) => ({
-    id: snapshot.id,
-    title: snapshot.title,
-    updatedAt: snapshot.updatedAt,
-    status: snapshot.status,
-  }));
-}
-
-function getLocalThreadSnapshot(id: string): LocalThreadSnapshot | null {
-  return (
-    readLocalThreadSnapshots().find((snapshot) => snapshot.id === id) ?? null
-  );
-}
-
-function upsertLocalThreadSnapshot(snapshot: LocalThreadSnapshot): void {
-  const snapshots = readLocalThreadSnapshots().filter(
-    (existing) => existing.id !== snapshot.id,
-  );
-  writeLocalThreadSnapshots(
-    [snapshot, ...snapshots].sort((a, b) => b.updatedAt - a.updatedAt),
-  );
-  try {
-    localStorage.setItem(LAST_THREAD_ID_KEY, snapshot.id);
-  } catch {
-    // Best-effort browser cache only.
-  }
-}
-
-function removeLocalThreadSnapshot(id: string): void {
-  writeLocalThreadSnapshots(
-    readLocalThreadSnapshots().filter((snapshot) => snapshot.id !== id),
-  );
-  try {
-    if (localStorage.getItem(LAST_THREAD_ID_KEY) === id) {
-      localStorage.removeItem(LAST_THREAD_ID_KEY);
-    }
-  } catch {
-    // Best-effort browser cache only.
-  }
-}
-
-function deserializeLocalMessages(raw: unknown[]): Message[] {
-  return raw.map((m, i): Message => {
-    const row =
-      m && typeof m === "object" ? (m as Record<string, unknown>) : {};
-    const role = row.role === "user" ? "user" : "assistant";
-    return {
-      id: typeof row.id === "number" ? row.id : i,
-      role,
-      text: typeof row.text === "string" ? row.text : "",
-      tools: Array.isArray(row.tools) ? (row.tools as ToolStep[]) : [],
-      progress: Array.isArray(row.progress)
-        ? (row.progress as ProgressStep[])
-        : [],
-      phase:
-        row.phase === "starting" ||
-        row.phase === "sandbox" ||
-        row.phase === "searching" ||
-        row.phase === "reading" ||
-        row.phase === "thinking" ||
-        row.phase === "answering" ||
-        row.phase === "done" ||
-        row.phase === "stopped" ||
-        row.phase === "error"
-          ? row.phase
-          : "done",
-      startedAt: typeof row.startedAt === "number" ? row.startedAt : undefined,
-      elapsedMs: typeof row.elapsedMs === "number" ? row.elapsedMs : undefined,
-      eventCursor:
-        typeof row.eventCursor === "number" ? row.eventCursor : undefined,
-      cost:
-        row.cost && typeof row.cost === "object"
-          ? (row.cost as { usd: number; tokens: number })
-          : undefined,
-      error: typeof row.error === "string" ? row.error : undefined,
-    };
-  });
 }
 
 function ThreadSidebar({
