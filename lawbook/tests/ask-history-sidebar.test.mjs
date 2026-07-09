@@ -36,6 +36,10 @@ test("new chat appears optimistically in history and is renamed on first prompt"
     /const allItems = \[[\s\S]*\.\.\.optimisticThreads\.map/,
   );
   assert.match(source, /title: "New Chat"/);
+  assert.match(
+    source,
+    /optimisticThreadSnapshotsRef\.current\.set\(nextThreadId,[\s\S]*messages: \[\]/,
+  );
   assert.match(source, /createPlaceholder: true/);
   assert.match(source, /setSidebarOpen\(true\)/);
   assert.match(source, /title: shortTitle\(q\)/);

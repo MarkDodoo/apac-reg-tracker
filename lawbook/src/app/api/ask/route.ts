@@ -27,6 +27,7 @@ import {
 } from "@/lib/agent";
 import { loadChatContext } from "@/lib/ask-context";
 import { recordAskQuestion } from "@/lib/ask-history";
+import { saveThread } from "@/lib/ask-threads";
 import { getSession } from "@/lib/auth";
 import {
   hasMemoryAskRun,
@@ -84,6 +85,10 @@ export async function POST(req: Request): Promise<Response> {
   let kind: string | undefined;
   let history: ChatTurn[] | undefined;
   let runId: string | undefined;
+  let threadId: string | undefined;
+  let threadTitle: string | undefined;
+  let sourceHref: string | undefined;
+  let initialMessages: unknown[] | undefined;
   let from = 0;
   try {
     const body = (await req.json()) as {
@@ -92,6 +97,10 @@ export async function POST(req: Request): Promise<Response> {
       kind?: unknown;
       history?: unknown;
       runId?: unknown;
+      threadId?: unknown;
+      title?: unknown;
+      sourceHref?: unknown;
+      initialMessages?: unknown;
       from?: unknown;
     };
     question = typeof body.question === "string" ? body.question.trim() : "";
@@ -99,6 +108,21 @@ export async function POST(req: Request): Promise<Response> {
     kind = typeof body.kind === "string" ? body.kind : undefined;
     runId =
       typeof body.runId === "string" && body.runId ? body.runId : undefined;
+    threadId =
+      typeof body.threadId === "string" && body.threadId.trim()
+        ? body.threadId.trim().slice(0, 100)
+        : undefined;
+    threadTitle =
+      typeof body.title === "string" && body.title.trim()
+        ? body.title.trim().slice(0, 200)
+        : undefined;
+    sourceHref =
+      typeof body.sourceHref === "string" && body.sourceHref.startsWith("/")
+        ? body.sourceHref.slice(0, 800)
+        : undefined;
+    initialMessages = Array.isArray(body.initialMessages)
+      ? body.initialMessages.slice(-200)
+      : undefined;
     from = typeof body.from === "number" && body.from > 0 ? body.from : 0;
     history = Array.isArray(body.history)
       ? body.history
@@ -149,6 +173,27 @@ export async function POST(req: Request): Promise<Response> {
       (await loadChatContext(new URLSearchParams({ cite, kind }))) ?? undefined;
     if (!context) {
       return errorStream(`Pinned ${kind} could not be loaded: ${cite}`);
+    }
+  }
+
+  // Persist a running thread from the same request that starts the research.
+  // The client also autosaves, but those best-effort requests can be cancelled
+  // when users quickly switch to Saved/Recents or start several chats.
+  if (from === 0 && runId && threadId && initialMessages?.length) {
+    try {
+      await saveThread({
+        userId: session.user.id,
+        id: threadId,
+        title: threadTitle || question,
+        messages: initialMessages,
+        cite,
+        kind,
+        sourceHref,
+        runId,
+        status: "running",
+      });
+    } catch (err) {
+      console.warn("Failed to persist Ask thread at run start", err);
     }
   }
 

@@ -67,21 +67,19 @@ export async function saveThread(input: {
        ON CONFLICT(id) DO UPDATE SET
          title = excluded.title,
          messages = CASE
-           WHEN excluded.status = 'running'
-             AND ask_threads.status IS NOT NULL
+           WHEN ask_threads.status IS NOT NULL
              AND (
                (
-                 ask_threads.status != 'running'
+                 excluded.status = 'running'
+                 AND ask_threads.status != 'running'
                  AND (
                    (ask_threads.runId IS NOT NULL AND ask_threads.runId = excluded.runId)
                    OR (ask_threads.runId IS NULL AND excluded.messageCount <= ask_threads.messageCount)
                  )
                )
                OR (
-                 ask_threads.status = 'running'
-                 AND ask_threads.runId IS NOT NULL
-                 AND excluded.runId IS NOT NULL
-                 AND ask_threads.runId != excluded.runId
+                 ask_threads.runId IS NOT NULL
+                 AND (excluded.runId IS NULL OR ask_threads.runId != excluded.runId)
                  AND excluded.messageCount <= ask_threads.messageCount
                )
              )
@@ -89,21 +87,19 @@ export async function saveThread(input: {
            ELSE excluded.messages
          END,
          messageCount = CASE
-           WHEN excluded.status = 'running'
-             AND ask_threads.status IS NOT NULL
+           WHEN ask_threads.status IS NOT NULL
              AND (
                (
-                 ask_threads.status != 'running'
+                 excluded.status = 'running'
+                 AND ask_threads.status != 'running'
                  AND (
                    (ask_threads.runId IS NOT NULL AND ask_threads.runId = excluded.runId)
                    OR (ask_threads.runId IS NULL AND excluded.messageCount <= ask_threads.messageCount)
                  )
                )
                OR (
-                 ask_threads.status = 'running'
-                 AND ask_threads.runId IS NOT NULL
-                 AND excluded.runId IS NOT NULL
-                 AND ask_threads.runId != excluded.runId
+                 ask_threads.runId IS NOT NULL
+                 AND (excluded.runId IS NULL OR ask_threads.runId != excluded.runId)
                  AND excluded.messageCount <= ask_threads.messageCount
                )
              )
@@ -114,21 +110,19 @@ export async function saveThread(input: {
          kind = excluded.kind,
          sourceHref = excluded.sourceHref,
          runId = CASE
-           WHEN excluded.status = 'running'
-             AND ask_threads.status IS NOT NULL
+           WHEN ask_threads.status IS NOT NULL
              AND (
                (
-                 ask_threads.status != 'running'
+                 excluded.status = 'running'
+                 AND ask_threads.status != 'running'
                  AND (
                    (ask_threads.runId IS NOT NULL AND ask_threads.runId = excluded.runId)
                    OR (ask_threads.runId IS NULL AND excluded.messageCount <= ask_threads.messageCount)
                  )
                )
                OR (
-                 ask_threads.status = 'running'
-                 AND ask_threads.runId IS NOT NULL
-                 AND excluded.runId IS NOT NULL
-                 AND ask_threads.runId != excluded.runId
+                 ask_threads.runId IS NOT NULL
+                 AND (excluded.runId IS NULL OR ask_threads.runId != excluded.runId)
                  AND excluded.messageCount <= ask_threads.messageCount
                )
              )
@@ -136,21 +130,19 @@ export async function saveThread(input: {
            ELSE excluded.runId
          END,
          status = CASE
-           WHEN excluded.status = 'running'
-             AND ask_threads.status IS NOT NULL
+           WHEN ask_threads.status IS NOT NULL
              AND (
                (
-                 ask_threads.status != 'running'
+                 excluded.status = 'running'
+                 AND ask_threads.status != 'running'
                  AND (
                    (ask_threads.runId IS NOT NULL AND ask_threads.runId = excluded.runId)
                    OR (ask_threads.runId IS NULL AND excluded.messageCount <= ask_threads.messageCount)
                  )
                )
                OR (
-                 ask_threads.status = 'running'
-                 AND ask_threads.runId IS NOT NULL
-                 AND excluded.runId IS NOT NULL
-                 AND ask_threads.runId != excluded.runId
+                 ask_threads.runId IS NOT NULL
+                 AND (excluded.runId IS NULL OR ask_threads.runId != excluded.runId)
                  AND excluded.messageCount <= ask_threads.messageCount
                )
              )
@@ -158,21 +150,19 @@ export async function saveThread(input: {
            ELSE excluded.status
          END,
          unread = CASE
-           WHEN excluded.status = 'running'
-             AND ask_threads.status IS NOT NULL
+           WHEN ask_threads.status IS NOT NULL
              AND (
                (
-                 ask_threads.status != 'running'
+                 excluded.status = 'running'
+                 AND ask_threads.status != 'running'
                  AND (
                    (ask_threads.runId IS NOT NULL AND ask_threads.runId = excluded.runId)
                    OR (ask_threads.runId IS NULL AND excluded.messageCount <= ask_threads.messageCount)
                  )
                )
                OR (
-                 ask_threads.status = 'running'
-                 AND ask_threads.runId IS NOT NULL
-                 AND excluded.runId IS NOT NULL
-                 AND ask_threads.runId != excluded.runId
+                 ask_threads.runId IS NOT NULL
+                 AND (excluded.runId IS NULL OR ask_threads.runId != excluded.runId)
                  AND excluded.messageCount <= ask_threads.messageCount
                )
              )
@@ -180,21 +170,19 @@ export async function saveThread(input: {
            ELSE 0
          END,
          updatedAt = CASE
-           WHEN excluded.status = 'running'
-             AND ask_threads.status IS NOT NULL
+           WHEN ask_threads.status IS NOT NULL
              AND (
                (
-                 ask_threads.status != 'running'
+                 excluded.status = 'running'
+                 AND ask_threads.status != 'running'
                  AND (
                    (ask_threads.runId IS NOT NULL AND ask_threads.runId = excluded.runId)
                    OR (ask_threads.runId IS NULL AND excluded.messageCount <= ask_threads.messageCount)
                  )
                )
                OR (
-                 ask_threads.status = 'running'
-                 AND ask_threads.runId IS NOT NULL
-                 AND excluded.runId IS NOT NULL
-                 AND ask_threads.runId != excluded.runId
+                 ask_threads.runId IS NOT NULL
+                 AND (excluded.runId IS NULL OR ask_threads.runId != excluded.runId)
                  AND excluded.messageCount <= ask_threads.messageCount
                )
              )
