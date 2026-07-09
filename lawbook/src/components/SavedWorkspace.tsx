@@ -186,7 +186,7 @@ export function SavedWorkspace() {
       <SavedFeatureAuthPrompt
         next="/saved"
         title="Sign in or create an account to use Saved"
-        body="Saved documents are private to your account. Sign in or create an account to keep judgments and statutes."
+        body="Saved documents are private to your account. Sign in or create an account to keep documents."
       />
     );
   }
@@ -231,7 +231,7 @@ export function SavedWorkspace() {
           <div className="rounded-xl border border-dashed border-border-strong p-5 text-sm text-muted">
             <p className="font-medium text-foreground">Nothing saved yet.</p>
             <p className="mt-1">
-              Save a judgment or statute and it will appear here.
+              Save a document and it will appear here.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Link
