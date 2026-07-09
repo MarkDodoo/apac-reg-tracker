@@ -5,7 +5,12 @@ import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
 import { AuthMenu } from "@/components/AuthMenu";
 import { useChrome } from "@/components/chrome/ChromeContext";
-import { BookIcon, SearchIcon, SparkleIcon } from "@/components/icons";
+import {
+  BookIcon,
+  HistoryIcon,
+  SearchIcon,
+  SparkleIcon,
+} from "@/components/icons";
 import { authClient } from "@/lib/auth-client";
 
 const NAV = [
@@ -26,6 +31,12 @@ const NAV = [
     label: "Saved",
     icon: BookIcon,
     match: (p: string) => p.startsWith("/saved"),
+  },
+  {
+    href: "/recents",
+    label: "Recents",
+    icon: HistoryIcon,
+    match: (p: string) => p.startsWith("/recents"),
   },
 ];
 
