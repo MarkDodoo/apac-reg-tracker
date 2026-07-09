@@ -14,6 +14,7 @@ export interface ThreadSummary {
   updatedAt: number;
   runId: string | null;
   status: string | null; // 'running' | 'stopped' | 'done' | null (legacy = done)
+  unread: boolean;
 }
 
 export interface ThreadDetail extends ThreadSummary {
@@ -69,7 +70,6 @@ export async function saveThread(input: {
            WHEN excluded.status = 'running'
              AND ask_threads.status IS NOT NULL
              AND ask_threads.status != 'running'
-             AND excluded.messageCount <= ask_threads.messageCount
            THEN ask_threads.messages
            ELSE excluded.messages
          END,
@@ -77,7 +77,6 @@ export async function saveThread(input: {
            WHEN excluded.status = 'running'
              AND ask_threads.status IS NOT NULL
              AND ask_threads.status != 'running'
-             AND excluded.messageCount <= ask_threads.messageCount
            THEN ask_threads.messageCount
            ELSE excluded.messageCount
          END,
@@ -88,7 +87,6 @@ export async function saveThread(input: {
            WHEN excluded.status = 'running'
              AND ask_threads.status IS NOT NULL
              AND ask_threads.status != 'running'
-             AND excluded.messageCount <= ask_threads.messageCount
            THEN ask_threads.runId
            ELSE excluded.runId
          END,
@@ -96,15 +94,20 @@ export async function saveThread(input: {
            WHEN excluded.status = 'running'
              AND ask_threads.status IS NOT NULL
              AND ask_threads.status != 'running'
-             AND excluded.messageCount <= ask_threads.messageCount
            THEN ask_threads.status
            ELSE excluded.status
+         END,
+         unread = CASE
+           WHEN excluded.status = 'running'
+             AND ask_threads.status IS NOT NULL
+             AND ask_threads.status != 'running'
+           THEN ask_threads.unread
+           ELSE 0
          END,
          updatedAt = CASE
            WHEN excluded.status = 'running'
              AND ask_threads.status IS NOT NULL
              AND ask_threads.status != 'running'
-             AND excluded.messageCount <= ask_threads.messageCount
            THEN ask_threads.updatedAt
            ELSE excluded.updatedAt
          END
@@ -139,6 +142,7 @@ interface SummaryRow {
   updatedAt: number;
   runId: string | null;
   status: string | null;
+  unread: number | null;
 }
 
 export async function listThreads(userId: string): Promise<ThreadSummary[]> {
@@ -147,7 +151,7 @@ export async function listThreads(userId: string): Promise<ThreadSummary[]> {
   // later autosaves, status reconciliation, or viewing another thread.
   const { results } = await db
     .prepare(
-      `SELECT id, title, cite, kind, sourceHref, messageCount, updatedAt, runId, status
+      `SELECT id, title, cite, kind, sourceHref, messageCount, updatedAt, runId, status, unread
        FROM ask_threads
        WHERE userId = ?
        ORDER BY createdAt DESC, id DESC
@@ -165,6 +169,7 @@ export async function listThreads(userId: string): Promise<ThreadSummary[]> {
     updatedAt: Number(r.updatedAt),
     runId: r.runId,
     status: r.status,
+    unread: Number(r.unread) === 1,
   }));
 }
 
@@ -180,7 +185,7 @@ export async function getThread(
   const db = await getDb();
   const row = await db
     .prepare(
-      `SELECT id, title, messages, messageCount, cite, kind, sourceHref, runId, status, createdAt, updatedAt
+      `SELECT id, title, messages, messageCount, cite, kind, sourceHref, runId, status, unread, createdAt, updatedAt
        FROM ask_threads
        WHERE userId = ? AND id = ?`,
     )
@@ -205,8 +210,45 @@ export async function getThread(
     createdAt: Number(row.createdAt),
     runId: row.runId,
     status: row.status,
+    unread: Number(row.unread) === 1,
     messages,
   };
+}
+
+export async function updateThreadRunStatus(input: {
+  userId: string;
+  id: string;
+  status: "running" | "done" | "stopped";
+  unread?: boolean;
+}): Promise<void> {
+  const db = await getDb();
+  await db
+    .prepare(
+      `UPDATE ask_threads
+       SET status = ?,
+           unread = CASE WHEN ? = 1 THEN 1 ELSE unread END,
+           updatedAt = ?
+       WHERE userId = ? AND id = ?`,
+    )
+    .bind(
+      input.status,
+      input.unread ? 1 : 0,
+      Date.now(),
+      input.userId,
+      input.id,
+    )
+    .run();
+}
+
+export async function markThreadSeen(
+  userId: string,
+  id: string,
+): Promise<void> {
+  const db = await getDb();
+  await db
+    .prepare(`UPDATE ask_threads SET unread = 0 WHERE userId = ? AND id = ?`)
+    .bind(userId, id)
+    .run();
 }
 
 export async function deleteThread(userId: string, id: string): Promise<void> {
