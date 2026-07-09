@@ -1050,8 +1050,12 @@ export function AskAgent({
 
       const ac = new AbortController();
       abortRef.current = ac;
+      let runSnapshot = reuseRunningAssistant
+        ? [...existing]
+        : [...messagesRef.current, userMsg, assistantMsg];
 
       const patch = (fn: (m: Message) => Message) => {
+        runSnapshot = runSnapshot.map((m) => (m.id === aId ? fn(m) : m));
         if (sendGenerationRef.current !== sendGeneration) return;
         setMessages((ms) => ms.map((m) => (m.id === aId ? fn(m) : m)));
       };
@@ -1090,7 +1094,7 @@ export function AskAgent({
             messagesRef.current.find((m) => m.role === "user")?.text ?? q,
           );
           if (!deletedThreadIdsRef.current.has(saveThreadId)) {
-            await fetch("/api/ask-threads", {
+            void fetch("/api/ask-threads", {
               method: "POST",
               headers: { "content-type": "application/json" },
               body: JSON.stringify({
@@ -1153,10 +1157,6 @@ export function AskAgent({
             } catch {
               continue;
             }
-            if (sendGenerationRef.current !== sendGeneration) {
-              await reader.cancel().catch(() => {});
-              return;
-            }
             eventCursor += 1;
             patch((m) => ({ ...m, eventCursor }));
             switch (ev.type) {
@@ -1174,7 +1174,10 @@ export function AskAgent({
                   return {
                     ...m,
                     phase: mapProgressPhase(ev.phase),
-                    startedAt: serverStartedAt ?? m.startedAt,
+                    startedAt:
+                      m.startedAt && serverStartedAt
+                        ? Math.min(m.startedAt, serverStartedAt)
+                        : (serverStartedAt ?? m.startedAt),
                     elapsedMs: ev.elapsedMs,
                     progress: [
                       ...m.progress,
@@ -1210,24 +1213,24 @@ export function AskAgent({
               }
               case "done": {
                 queueingOpenRef.current = false;
-                let finalSnapshot: Message[] = [];
-                setMessages((ms) => {
-                  finalSnapshot = ms.map((m) =>
-                    m.id === aId
-                      ? {
-                          ...m,
-                          text: ev.text || acc,
-                          phase: "done",
-                          elapsedMs: m.startedAt
-                            ? Date.now() - m.startedAt
-                            : m.elapsedMs,
-                          cost: { usd: ev.costUsd, tokens: ev.contextTokens },
-                        }
-                      : m,
-                  );
+                const finalSnapshot = runSnapshot.map((m) =>
+                  m.id === aId
+                    ? {
+                        ...m,
+                        text: ev.text || acc,
+                        phase: "done" as const,
+                        elapsedMs: m.startedAt
+                          ? Date.now() - m.startedAt
+                          : m.elapsedMs,
+                        cost: { usd: ev.costUsd, tokens: ev.contextTokens },
+                      }
+                    : m,
+                );
+                runSnapshot = finalSnapshot;
+                if (sendGenerationRef.current === sendGeneration) {
                   messagesRef.current = finalSnapshot;
-                  return finalSnapshot;
-                });
+                  setMessages(finalSnapshot);
+                }
                 const finalThreadId = runThreadId;
                 const finalTitle = shortTitle(
                   finalSnapshot.find((m) => m.role === "user")?.text ?? q,
@@ -1498,14 +1501,14 @@ export function AskAgent({
   }, [messages, isSignedIn, pinnedContext, refreshThreadList]);
 
   const resetChatState = useCallback(
-    (options: { createPlaceholder?: boolean } = {}) => {
-      const { createPlaceholder = false } = options;
+    (options: { createPlaceholder?: boolean; abortCurrent?: boolean } = {}) => {
+      const { createPlaceholder = false, abortCurrent = true } = options;
       sendGenerationRef.current += 1;
       queuedPromptRef.current = null;
       pendingSendAfterCleanupRef.current = null;
       queueingOpenRef.current = false;
       activeRef.current = false;
-      abortRef.current?.abort();
+      if (abortCurrent) abortRef.current?.abort();
       abortRef.current = null;
       setBusy(false);
       messagesRef.current = [];
@@ -1590,7 +1593,8 @@ export function AskAgent({
 
     // Detach this UI stream only. Durable Object-backed research keeps running
     // in the background; explicit Stop is the only path that cancels backend work.
-    resetChatState({ createPlaceholder: true });
+    // Same UI reset as resetChatState({ createPlaceholder: true }), without aborting the local tail.
+    resetChatState({ createPlaceholder: true, abortCurrent: false });
     setSidebarOpen(true);
   }, [
     persistThreadSnapshot,
@@ -1630,7 +1634,11 @@ export function AskAgent({
       const restoreOptimisticSnapshot = () => {
         const snapshot = optimisticThreadSnapshotsRef.current.get(threadId);
         if (!snapshot || loadSeq !== loadThreadSeqRef.current) return false;
+        sendGenerationRef.current += 1;
+        activeRef.current = false;
+        queueingOpenRef.current = false;
         abortRef.current?.abort();
+        abortRef.current = null;
         const loaded = snapshot.messages;
         msgId.current = loaded.reduce((mx, m) => Math.max(mx, m.id), 0) + 1;
         threadIdRef.current = threadId;
@@ -1721,7 +1729,11 @@ export function AskAgent({
             };
           }),
         );
+        sendGenerationRef.current += 1;
+        activeRef.current = false;
+        queueingOpenRef.current = false;
         abortRef.current?.abort();
+        abortRef.current = null;
         msgId.current = loaded.reduce((mx, m) => Math.max(mx, m.id), 0) + 1;
         threadIdRef.current = threadId;
         setActiveThreadId(threadId);

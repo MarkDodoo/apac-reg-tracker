@@ -26,9 +26,17 @@ test("new chat appears optimistically in history and is renamed on first prompt"
   const source = read("src/components/AskAgent.tsx");
 
   assert.match(source, /const \[optimisticThreads, setOptimisticThreads\]/);
+  assert.match(
+    source,
+    /setOptimisticThreads\(\(threads\) => \[[\s\S]*\.\.\.threads\.filter\(\(item\) => item\.id !== thread\.id\)/,
+  );
   assert.match(source, /function ThreadSidebar\([\s\S]*optimisticThreads/);
+  assert.match(
+    source,
+    /const allItems = \[[\s\S]*\.\.\.optimisticThreads\.map/,
+  );
   assert.match(source, /title: "New Chat"/);
-  assert.match(source, /resetChatState\(\{ createPlaceholder: true \}\)/);
+  assert.match(source, /createPlaceholder: true/);
   assert.match(source, /setSidebarOpen\(true\)/);
   assert.match(source, /title: shortTitle\(q\)/);
   assert.match(source, /loading && allItems\.length === 0/);
@@ -40,8 +48,18 @@ test("new chat preserves the previous thread while creating the blank placeholde
   assert.match(source, /const snapshot = \[\.\.\.messagesRef\.current\]/);
   assert.match(source, /const currentThreadId = threadIdRef\.current/);
   assert.match(source, /upsertOptimisticThread\(\{[\s\S]*id: currentThreadId/);
-  assert.match(source, /persistThreadSnapshot\(snapshot, \{[\s\S]*threadId: currentThreadId/);
+  assert.match(
+    source,
+    /persistThreadSnapshot\(snapshot, \{[\s\S]*threadId: currentThreadId/,
+  );
   assert.match(source, /const runThreadId = threadIdRef\.current/);
   assert.match(source, /const finalThreadId = runThreadId/);
   assert.match(source, /sendGenerationRef\.current \+= 1/);
+  assert.match(source, /abortCurrent = true/);
+  assert.match(
+    source,
+    /resetChatState\(\{\s*createPlaceholder: true,\s*abortCurrent: false,?\s*\}\)/,
+  );
+  assert.match(source, /let runSnapshot/);
+  assert.match(source, /const finalSnapshot = runSnapshot\.map/);
 });
