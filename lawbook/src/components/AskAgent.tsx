@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -1971,7 +1978,7 @@ export function AskAgent({
     async (threadId: string) => {
       const loadSeq = ++loadThreadSeqRef.current;
       setLoadingThreadId(threadId);
-      const restoreOptimisticSnapshot = () => {
+      const restoreOptimisticSnapshot = (reconnect = true) => {
         const memorySnapshot =
           optimisticThreadSnapshotsRef.current.get(threadId);
         const localSnapshot = getLocalThreadSnapshot(threadId);
@@ -1998,7 +2005,7 @@ export function AskAgent({
         setBusy(running);
         messagesRef.current = loaded;
         setMessages(loaded);
-        if (running && runId) {
+        if (reconnect && running && runId) {
           const user = [...loaded]
             .reverse()
             .find((m) => m.role === "user" && m.text.trim());
@@ -2016,7 +2023,13 @@ export function AskAgent({
         }
         return true;
       };
+
+      // Preserve the currently visible thread before switching refs, then paint
+      // the target's browser snapshot immediately. The request below remains the
+      // source of truth, but it should refresh an already-visible conversation
+      // instead of leaving the empty Ask landing page on screen while it loads.
       flushThread();
+      restoreOptimisticSnapshot(false);
       const ac = new AbortController();
       const timeout = window.setTimeout(() => ac.abort(), 10000);
       try {
@@ -2171,7 +2184,7 @@ export function AskAgent({
 
   // Opened at /ask/[id]: restore that saved conversation on mount.
   const loadedThreadRef = useRef(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (loadedThreadRef.current || !initialThreadId) return;
     loadedThreadRef.current = true;
     threadIdRef.current = initialThreadId;
@@ -2182,7 +2195,7 @@ export function AskAgent({
   // Returning via the top nav lands on /ask, not /ask/[id]. Restore the last
   // local thread so a route remount through Saved/Recents does not look erased.
   const restoredLastThreadRef = useRef(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (restoredLastThreadRef.current || initialThreadId) return;
     if (messagesRef.current.length > 0 || hasPendingAsk()) return;
     restoredLastThreadRef.current = true;
