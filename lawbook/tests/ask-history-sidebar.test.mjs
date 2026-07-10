@@ -138,8 +138,8 @@ test("ask places the sidebar toggle before the Lawplain header logo", () => {
   assert.match(source, /hover:bg-background\/70/);
   assert.match(appShell, /const askRoute = pathname\.startsWith\("\/ask"\)/);
   assert.match(appShell, /askRoute \? "" : "mx-auto max-w-6xl"/);
-  assert.match(askPage, /w-full max-w-\[850px\] overflow-hidden/);
-  assert.match(threadPage, /w-full max-w-\[850px\] overflow-hidden/);
+  assert.match(askPage, /min-h-0 w-full overflow-hidden/);
+  assert.match(threadPage, /min-h-0 w-full overflow-hidden/);
   assert.match(
     appShell,
     /askRoute && askSidebarOpen \? "lg:ml-72 lg:rounded-l-2xl" : ""/,
