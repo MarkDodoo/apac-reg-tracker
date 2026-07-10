@@ -2597,9 +2597,9 @@ export function AskAgent({
         />
       )}
       <div
-        className={`min-h-0 flex-1 transition-transform duration-300 ease-[var(--ease-smooth-out)] motion-reduce:transition-none ${
-          sidebarOpen ? "lg:translate-x-36" : ""
-        } ${messages.length === 0 ? "thin-scroll overflow-y-auto pb-6" : ""}`}
+        className={`min-h-0 flex-1 ${
+          messages.length === 0 ? "thin-scroll overflow-y-auto pb-6" : ""
+        }`}
       >
         {messages.length === 0 ? (
           <div className="flex flex-col items-center pt-2 text-center sm:pt-4">
@@ -2904,9 +2904,9 @@ function ThreadSidebar({
         aria-label="Conversation history"
         aria-hidden={!open}
         data-open={open}
-        className={`fixed bottom-0 left-0 top-14 z-40 flex w-72 max-w-[85vw] flex-col overflow-hidden border-r border-border/70 bg-surface-2/30 transition-[transform,width,border-color] duration-300 ease-[var(--ease-smooth-out)] motion-reduce:transition-none lg:max-w-none lg:translate-x-0 ${
+        className={`fixed bottom-0 left-0 top-14 z-40 flex w-72 max-w-[85vw] flex-col overflow-hidden border-r border-border/70 bg-surface-2/30 transition-[transform,width,border-color] duration-300 ease-[var(--ease-smooth-out)] motion-reduce:transition-none lg:z-20 lg:max-w-none lg:translate-x-0 lg:border-r-0 ${
           open
-            ? "translate-x-0 lg:w-72"
+            ? "translate-x-0 lg:w-[19rem]"
             : "pointer-events-none -translate-x-full lg:w-0 lg:border-transparent"
         }`}
       >
@@ -2917,16 +2917,18 @@ function ThreadSidebar({
               : "-translate-x-2 opacity-0 delay-0"
           }`}
         >
-          <div className="flex min-h-14 items-center px-4">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-2">
-              History
-            </span>
-          </div>
           <div className="px-2 pt-2">
+            <div className="flex h-10 items-center px-3">
+              <span className="text-[13px] font-semibold leading-none uppercase tracking-wide text-muted-2">
+                History
+              </span>
+            </div>
+          </div>
+          <div className="px-2">
             <button
               type="button"
               onClick={onNewChat}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-background/70"
+              className="flex h-10 w-full items-center gap-2 rounded-lg px-3 text-sm font-medium leading-none text-foreground transition-colors hover:bg-background/70"
             >
               <span className="text-base leading-none text-muted-2">+</span>
               New chat

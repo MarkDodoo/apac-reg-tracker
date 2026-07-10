@@ -92,11 +92,13 @@ test("ask places the sidebar toggle before the Lawplain header logo", () => {
     /askRoute && askSidebarAvailable[\s\S]*<button[\s\S]*<Link href="\/"/,
   );
   assert.doesNotMatch(source, /fixed left-4 top-/);
-  assert.match(source, /duration-300[\s\S]*lg:translate-x-36/);
+  assert.doesNotMatch(source, /lg:translate-x-36/);
   assert.match(source, /transition-\[transform,width,border-color\]/);
   assert.match(source, /lg:w-0 lg:border-transparent/);
+  assert.match(source, /translate-x-0 lg:w-\[19rem\]/);
   assert.match(source, /min-w-72[^"]*transition-\[transform,opacity\]/);
   assert.match(source, /translate-x-0 opacity-100 delay-75/);
+  assert.doesNotMatch(source, /rounded-r-2xl/);
   assert.match(source, /motion-reduce:transition-none/);
   assert.match(
     globalStyles,
@@ -108,7 +110,12 @@ test("ask places the sidebar toggle before the Lawplain header logo", () => {
   assert.match(source, /bg-transparent transition-opacity/);
   assert.match(source, /<ThreadSidebar[\s\S]*onNewChat=\{newChat\}/);
   assert.doesNotMatch(source, /aria-label=\{sidebarOpen/);
-  assert.match(source, /flex min-h-14 items-center px-4/);
+  assert.match(source, /flex h-10 items-center px-3/);
+  assert.match(
+    source,
+    /text-\[13px\] font-semibold leading-none uppercase tracking-wide/,
+  );
+  assert.match(source, /flex h-10 w-full items-center gap-2/);
   assert.doesNotMatch(source, /min-h-14 items-center border-b/);
   assert.match(source, /bg-surface-2\/30/);
   assert.match(source, /hover:bg-background\/70/);
@@ -116,6 +123,12 @@ test("ask places the sidebar toggle before the Lawplain header logo", () => {
   assert.match(appShell, /askRoute \? "" : "mx-auto max-w-6xl"/);
   assert.match(askPage, /w-full max-w-\[850px\] overflow-hidden/);
   assert.match(threadPage, /w-full max-w-\[850px\] overflow-hidden/);
+  assert.match(
+    appShell,
+    /askRoute && askSidebarOpen \? "lg:ml-72 lg:rounded-l-2xl" : ""/,
+  );
+  assert.match(appShell, /flex h-14 w-full items-center justify-between/);
+  assert.match(appShell, /h-5 w-5 translate-y-px/);
   assert.doesNotMatch(askPage, /Back to search/);
   assert.doesNotMatch(threadPage, /Back to search/);
 });
