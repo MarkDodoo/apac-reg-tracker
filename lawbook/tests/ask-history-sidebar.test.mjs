@@ -94,6 +94,28 @@ test("loading and reconnecting a thread cannot send from an empty UI", () => {
   assert.match(source, /undefined,\s*true,\s*\)/);
 });
 
+test("returning to Ask paints the cached latest thread before refreshing it", () => {
+  const source = read("src/components/AskAgent.tsx");
+
+  assert.match(source, /useLayoutEffect/);
+  assert.match(
+    source,
+    /const restoreOptimisticSnapshot = \(reconnect = true\)/,
+  );
+  assert.match(
+    source,
+    /flushThread\(\);\s*restoreOptimisticSnapshot\(false\);\s*const ac/,
+  );
+  assert.match(
+    source,
+    /useLayoutEffect\(\(\) => \{[\s\S]*void loadThread\(initialThreadId\)/,
+  );
+  assert.match(
+    source,
+    /localStorage\.getItem\(LAST_THREAD_ID_KEY\)[\s\S]*void loadThread\(lastThreadId\)/,
+  );
+});
+
 test("thread persistence keeps fuller transcripts over stale saves", () => {
   const source = read("src/lib/ask-threads.ts");
   const migration = read("migrations/0015_ask_thread_transcript_score.sql");
