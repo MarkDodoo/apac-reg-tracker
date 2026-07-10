@@ -329,12 +329,10 @@ function savePendingAsk(pending: PendingAsk): boolean {
   }
 }
 
-function takePendingAsk(): PendingAsk | null {
+function peekPendingAsk(): PendingAsk | null {
   try {
     const raw = sessionStorage.getItem(PENDING_ASK_KEY);
     if (!raw) return null;
-
-    sessionStorage.removeItem(PENDING_ASK_KEY);
 
     const parsed = JSON.parse(raw) as Partial<PendingAsk>;
     if (
@@ -344,6 +342,7 @@ function takePendingAsk(): PendingAsk | null {
       typeof parsed.createdAt !== "number" ||
       Date.now() - parsed.createdAt > PENDING_ASK_TTL_MS
     ) {
+      clearPendingAsk();
       return null;
     }
 
@@ -368,13 +367,21 @@ function takePendingAsk(): PendingAsk | null {
       createdAt: parsed.createdAt,
     };
   } catch {
-    try {
-      sessionStorage.removeItem(PENDING_ASK_KEY);
-    } catch {
-      // Ignore unavailable storage.
-    }
+    clearPendingAsk();
     return null;
   }
+}
+
+function clearPendingAsk(): void {
+  try {
+    sessionStorage.removeItem(PENDING_ASK_KEY);
+  } catch {
+    // Ignore unavailable storage.
+  }
+}
+
+function hasPendingAsk(): boolean {
+  return Boolean(peekPendingAsk());
 }
 
 function isCursorOnFirstLine(el: HTMLTextAreaElement): boolean {
@@ -718,6 +725,8 @@ export function AskAgent({
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session, isPending: sessionPending } = authClient.useSession();
+  const [sessionWaitExpired, setSessionWaitExpired] = useState(false);
+  const authBlocking = sessionPending && !sessionWaitExpired;
   const isSignedIn = Boolean(session?.user);
   const query = searchParams.toString();
   const currentPath = `${pathname || "/"}${query ? `?${query}` : ""}`;
@@ -743,6 +752,14 @@ export function AskAgent({
   const [queuedPrompt, setQueuedPrompt] = useState<string | null>(null);
   const [pinnedContext, setPinnedContext] = useState(initialContext);
   const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!sessionPending) {
+      setSessionWaitExpired(false);
+      return;
+    }
+    const timeout = window.setTimeout(() => setSessionWaitExpired(true), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [sessionPending]);
   const abortRef = useRef<AbortController | null>(null);
   const activeRef = useRef(false);
   const sendGenerationRef = useRef(0);
@@ -756,7 +773,7 @@ export function AskAgent({
         resumeFrom?: number,
         resumeStartedAt?: number,
         internalReconnect?: boolean,
-      ) => Promise<void>)
+      ) => Promise<boolean>)
     | null
   >(null);
   const historyIndexRef = useRef(-1);
@@ -804,16 +821,12 @@ export function AskAgent({
         snapshot.find((m) => m.role === "user")?.text ?? "",
       );
       const existingSnapshot = getLocalThreadSnapshot(threadId);
-      const existingThread = optimisticThreads.find(
-        (thread) => thread.id === threadId,
-      );
       const updatedAt = Date.now();
-      const createdAt =
-        existingSnapshot?.createdAt ?? existingThread?.createdAt ?? updatedAt;
+      const fallbackCreatedAt = existingSnapshot?.createdAt ?? updatedAt;
       upsertLocalThreadSnapshot({
         id: threadId,
         title,
-        createdAt,
+        createdAt: fallbackCreatedAt,
         updatedAt,
         messages: serializeMessages(snapshot),
         runId: options.runId ?? runIdRef.current,
@@ -821,12 +834,14 @@ export function AskAgent({
         context: options.context ?? pinnedContext,
       });
       setOptimisticThreads((threads) => {
+        const existingThread = threads.find((thread) => thread.id === threadId);
+        const createdAt = existingThread?.createdAt ?? fallbackCreatedAt;
         const next = { id: threadId, title, createdAt, updatedAt, status };
         const rest = threads.filter((thread) => thread.id !== threadId);
         return [next, ...rest];
       });
     },
-    [optimisticThreads, pinnedContext],
+    [pinnedContext],
   );
   messagesRef.current = messages;
   useEffect(() => {
@@ -1135,9 +1150,9 @@ export function AskAgent({
       internalReconnect = false,
     ) => {
       const q = text.trim();
-      if (!q) return;
+      if (!q) return false;
 
-      if (sessionPending || (loadingThreadId && !internalReconnect)) return;
+      if (authBlocking || (loadingThreadId && !internalReconnect)) return false;
 
       if (!isSignedIn) {
         const saved = savePendingAsk({
@@ -1174,7 +1189,7 @@ export function AskAgent({
           clearDraft();
           setInput("");
         }
-        return;
+        return true;
       }
 
       if (activeRef.current) {
@@ -1184,7 +1199,7 @@ export function AskAgent({
           pendingSendAfterCleanupRef.current = q;
           setInput("");
         }
-        return;
+        return true;
       }
 
       const sendGeneration = sendGenerationRef.current + 1;
@@ -1532,7 +1547,7 @@ export function AskAgent({
                   /* ignore */
                 }
                 await reader.cancel().catch(() => {});
-                return;
+                return true;
               }
               case "error":
                 queueingOpenRef.current = false;
@@ -1543,7 +1558,7 @@ export function AskAgent({
                   /* ignore */
                 }
                 await reader.cancel().catch(() => {});
-                return;
+                return true;
             }
           }
         }
@@ -1576,6 +1591,7 @@ export function AskAgent({
           }
         }
       }
+      return true;
     },
     [
       cacheThreadSnapshot,
@@ -1585,7 +1601,7 @@ export function AskAgent({
       queuePrompt,
       refreshThreadList,
       resetHistoryNavigation,
-      sessionPending,
+      authBlocking,
       upsertOptimisticThread,
       loadingThreadId,
     ],
@@ -1594,15 +1610,25 @@ export function AskAgent({
   sendRef.current = send;
 
   useEffect(() => {
-    if (!isSignedIn || busy || messagesRef.current.length > 0) return;
+    if (
+      !isSignedIn ||
+      busy ||
+      authBlocking ||
+      loadingThreadId ||
+      messagesRef.current.length > 0
+    ) {
+      return;
+    }
 
-    const pending = takePendingAsk();
+    const pending = peekPendingAsk();
     if (!pending) return;
 
     window.setTimeout(() => {
-      void sendRef.current?.(pending.question);
+      void sendRef.current?.(pending.question).then((accepted) => {
+        if (accepted) clearPendingAsk();
+      });
     }, 0);
-  }, [busy, isSignedIn]);
+  }, [authBlocking, busy, isSignedIn, loadingThreadId]);
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1670,9 +1696,16 @@ export function AskAgent({
     [cacheThreadSnapshot, isSignedIn, pinnedContext, refreshThreadList],
   );
 
-  const flushThread = useCallback(() => {
-    void persistThreadSnapshot(messagesRef.current, { keepalive: true });
+  const persistThreadSnapshotRef = useRef(persistThreadSnapshot);
+  useEffect(() => {
+    persistThreadSnapshotRef.current = persistThreadSnapshot;
   }, [persistThreadSnapshot]);
+
+  const flushThread = useCallback(() => {
+    void persistThreadSnapshotRef.current(messagesRef.current, {
+      keepalive: true,
+    });
+  }, []);
 
   useEffect(() => {
     return () => flushThread();
@@ -1984,9 +2017,12 @@ export function AskAgent({
         return true;
       };
       flushThread();
+      const ac = new AbortController();
+      const timeout = window.setTimeout(() => ac.abort(), 10000);
       try {
         const res = await fetch(
           `/api/ask-threads?id=${encodeURIComponent(threadId)}`,
+          { signal: ac.signal },
         );
         if (!res.ok || loadSeq !== loadThreadSeqRef.current) {
           restoreOptimisticSnapshot();
@@ -2125,6 +2161,7 @@ export function AskAgent({
       } catch {
         restoreOptimisticSnapshot();
       } finally {
+        window.clearTimeout(timeout);
         if (loadSeq === loadThreadSeqRef.current) setLoadingThreadId(null);
       }
     },
@@ -2147,7 +2184,7 @@ export function AskAgent({
   const restoredLastThreadRef = useRef(false);
   useEffect(() => {
     if (restoredLastThreadRef.current || initialThreadId) return;
-    if (messagesRef.current.length > 0) return;
+    if (messagesRef.current.length > 0 || hasPendingAsk()) return;
     restoredLastThreadRef.current = true;
     try {
       const lastThreadId = localStorage.getItem(LAST_THREAD_ID_KEY);
@@ -2268,7 +2305,7 @@ export function AskAgent({
             <button
               type="submit"
               disabled={
-                sessionPending || Boolean(loadingThreadId) || !input.trim()
+                authBlocking || Boolean(loadingThreadId) || !input.trim()
               }
               className="inline-flex h-[42px] items-center gap-1.5 rounded-xl bg-foreground px-3 text-sm font-medium text-primary-fg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
               aria-label="Queue prompt"
@@ -2286,9 +2323,7 @@ export function AskAgent({
         ) : (
           <button
             type="submit"
-            disabled={
-              sessionPending || Boolean(loadingThreadId) || !input.trim()
-            }
+            disabled={authBlocking || Boolean(loadingThreadId) || !input.trim()}
             className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-xl bg-foreground text-primary-fg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
             aria-label="Send"
           >
@@ -2391,7 +2426,7 @@ export function AskAgent({
                 key={s}
                 type="button"
                 onClick={() => void send(s)}
-                disabled={sessionPending || Boolean(loadingThreadId)}
+                disabled={authBlocking || Boolean(loadingThreadId)}
                 className="rounded-xl border border-border bg-surface px-3.5 py-2.5 text-left text-[13px] text-foreground transition-colors hover:border-border-strong hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {s}
@@ -2512,10 +2547,23 @@ function ThreadSidebar({
   const optimisticIdSet = new Set(optimisticThreads.map((thread) => thread.id));
   const itemsById = new Map(items.map((item) => [item.id, item]));
   const allItems = [
-    ...optimisticThreads.map((thread) => ({
-      ...itemsById.get(thread.id),
-      ...thread,
-    })),
+    ...optimisticThreads.map((thread) => {
+      const fetched = itemsById.get(thread.id);
+      if (
+        fetched?.status &&
+        thread.status === "running" &&
+        fetched.status !== "running"
+      ) {
+        return {
+          ...thread,
+          ...fetched,
+        };
+      }
+      return {
+        ...fetched,
+        ...thread,
+      };
+    }),
     ...items.filter((item) => !optimisticIdSet.has(item.id)),
   ].sort(compareThreadsByCreatedAtDesc);
   const filtered = q

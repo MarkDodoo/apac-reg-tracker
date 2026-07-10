@@ -46,6 +46,22 @@ test("new chat appears optimistically in history and is renamed on first prompt"
   assert.match(source, /loading && allItems\.length === 0/);
 });
 
+test("ask history accepts reconciled terminal status over stale optimistic running", () => {
+  const source = read("src/components/AskAgent.tsx");
+  const routeSource = read("src/app/api/ask-threads/route.ts");
+
+  assert.match(
+    source,
+    /fetched\?\.status[\s\S]*thread\.status === "running"[\s\S]*fetched\.status !== "running"/,
+  );
+  assert.match(source, /return \{\s*\.\.\.thread,\s*\.\.\.fetched,\s*\}/);
+  assert.match(source, /return \{\s*\.\.\.fetched,\s*\.\.\.thread,\s*\}/);
+  assert.match(routeSource, /reconcileRunningThreads/);
+  assert.match(routeSource, /thread\.status !== "running" \|\| !thread\.runId/);
+  assert.match(routeSource, /runStatus === "stopped" \? "stopped" : "done"/);
+  assert.match(routeSource, /unread: status === "done"/);
+});
+
 test("ask thread sidebar orders by chat creation, not latest update", () => {
   const source = read("src/components/AskAgent.tsx");
   const serverSource = read("src/lib/ask-threads.ts");
