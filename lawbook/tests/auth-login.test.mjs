@@ -6,6 +6,25 @@ function read(path) {
   return readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 }
 
+test("Google OAuth is configured and preserves a safe post-auth destination", () => {
+  const auth = read("src/lib/auth.ts");
+  const form = read("src/components/AuthForm.tsx");
+  const env = read(".env.example");
+
+  assert.match(auth, /socialProviders:/);
+  assert.match(auth, /google:/);
+  assert.match(auth, /GOOGLE_CLIENT_ID/);
+  assert.match(auth, /GOOGLE_CLIENT_SECRET/);
+  assert.match(form, /authClient\.signIn\.social/);
+  assert.match(form, /provider: "google"/);
+  assert.match(
+    form,
+    /callbackURL: new URL\(next, window\.location\.origin\)\.toString\(\)/,
+  );
+  assert.match(form, /Continue with Google/);
+  assert.match(env, /\/api\/auth\/callback\/google/);
+});
+
 test("sign-in checks username registration before password auth", () => {
   const form = read("src/components/AuthForm.tsx");
   const route = read("src/app/api/account-exists/route.ts");

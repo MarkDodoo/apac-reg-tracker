@@ -90,31 +90,46 @@ route returns an `error` event explaining the model is unavailable.
 
 ## Authentication and D1 setup
 
-Lawplain uses [Better Auth](https://www.better-auth.com/) for username/password accounts. Auth data is stored in a Cloudflare D1 database bound as `AUTH_DB`.
+Lawplain uses [Better Auth](https://www.better-auth.com/) for username/password accounts and Google OAuth. Auth data is stored in a Cloudflare D1 database bound as `AUTH_DB`.
 
 1. Generate a Better Auth secret:
    ```bash
    openssl rand -base64 32
    ```
-2. Copy `.env.example` to `.env.local` and set:
+2. In Google Cloud Console, create an OAuth 2.0 **Web application** client and add these authorized redirect URIs:
+   - Local: `http://localhost:3000/api/auth/callback/google`
+   - Production: `https://lawplain.com/api/auth/callback/google`
+3. Copy `.env.example` to `.env.local` and set:
    ```bash
    BETTER_AUTH_SECRET=...
    BETTER_AUTH_URL=http://localhost:3000
+   GOOGLE_CLIENT_ID=...
+   GOOGLE_CLIENT_SECRET=...
    ```
-3. Create the D1 database:
+4. Create the D1 database:
    ```bash
    bun run d1:create
    ```
-4. Copy the returned `database_id` into `wrangler.jsonc`.
-5. Apply the auth schema locally or remotely:
+5. Copy the returned `database_id` into `wrangler.jsonc`.
+6. Apply the auth schema locally or remotely:
    ```bash
    bun run d1:migrate:local
    bun run d1:migrate:remote
    ```
-6. Run the app:
+7. Run the app:
    ```bash
    bun run dev
    ```
+
+For Cloudflare production, keep the client secret and auth secret out of `wrangler.jsonc`:
+
+```bash
+bunx wrangler secret put BETTER_AUTH_SECRET
+bunx wrangler secret put GOOGLE_CLIENT_ID
+bunx wrangler secret put GOOGLE_CLIENT_SECRET
+```
+
+`BETTER_AUTH_URL` is already set to `https://lawplain.com` in `wrangler.jsonc`; it must match the origin used by the production Google callback URL.
 
 Account routes:
 

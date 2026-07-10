@@ -7,6 +7,8 @@ interface AuthVars extends CloudflareEnv {
   BETTER_AUTH_SECRET?: string;
   BETTER_AUTH_TRUSTED_ORIGINS?: string;
   BETTER_AUTH_URL?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
 }
 
 function getTrustedOrigins(authUrl?: string, trustedOrigins?: string) {
@@ -43,6 +45,10 @@ export async function getAuth() {
   const trustedOrigins =
     authVars.BETTER_AUTH_TRUSTED_ORIGINS ??
     process.env.BETTER_AUTH_TRUSTED_ORIGINS;
+  const googleClientId =
+    authVars.GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID;
+  const googleClientSecret =
+    authVars.GOOGLE_CLIENT_SECRET ?? process.env.GOOGLE_CLIENT_SECRET;
 
   return betterAuth({
     appName: "Lawplain",
@@ -57,6 +63,15 @@ export async function getAuth() {
       enabled: true,
       requireEmailVerification: false,
     },
+    socialProviders:
+      googleClientId && googleClientSecret
+        ? {
+            google: {
+              clientId: googleClientId,
+              clientSecret: googleClientSecret,
+            },
+          }
+        : undefined,
     plugins: [username()],
   });
 }

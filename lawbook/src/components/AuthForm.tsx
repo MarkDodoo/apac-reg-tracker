@@ -185,9 +185,32 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<AuthErrorState | null>(null);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [createdUsername, setCreatedUsername] = useState<string | null>(null);
 
   const isSignUp = mode === "sign-up";
+
+  async function onGoogleSignIn() {
+    setError(null);
+    setGoogleLoading(true);
+
+    try {
+      const { error } = await authClient.signIn.social({
+        provider: "google",
+        callbackURL: new URL(next, window.location.origin).toString(),
+      });
+      if (error) throw error;
+    } catch (err) {
+      setError({
+        kind: "text",
+        message: errorMessage(
+          err,
+          "Google sign-in failed. Please try again or use your username.",
+        ),
+      });
+      setGoogleLoading(false);
+    }
+  }
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -370,6 +393,41 @@ export function AuthForm({ mode }: AuthFormProps) {
         </p>
       </div>
 
+      <button
+        type="button"
+        onClick={onGoogleSignIn}
+        disabled={loading || googleLoading}
+        className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5">
+          <path
+            fill="#4285F4"
+            d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.91h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.32 2.98-7.4Z"
+          />
+          <path
+            fill="#34A853"
+            d="M12 22c2.7 0 4.97-.9 6.63-2.43l-3.24-2.54c-.9.6-2.05.96-3.39.96-2.61 0-4.82-1.76-5.61-4.13H3.04v2.62A10 10 0 0 0 12 22Z"
+          />
+          <path
+            fill="#FBBC05"
+            d="M6.39 13.86A6.01 6.01 0 0 1 6.08 12c0-.65.11-1.28.31-1.86V7.52H3.04A10 10 0 0 0 2 12c0 1.61.38 3.14 1.04 4.48l3.35-2.62Z"
+          />
+          <path
+            fill="#EA4335"
+            d="M12 6.01c1.47 0 2.79.5 3.82 1.49l2.88-2.88A9.65 9.65 0 0 0 12 2a10 10 0 0 0-8.96 5.52l3.35 2.62C7.18 7.77 9.39 6.01 12 6.01Z"
+          />
+        </svg>
+        {googleLoading ? "Connecting to Google…" : "Continue with Google"}
+      </button>
+
+      <div className="my-5 flex items-center gap-3" aria-hidden="true">
+        <span className="h-px flex-1 bg-border" />
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-2">
+          or
+        </span>
+        <span className="h-px flex-1 bg-border" />
+      </div>
+
       <form onSubmit={onSubmit} className="space-y-4">
         <label className="block text-sm font-medium text-foreground">
           Username
@@ -453,7 +511,7 @@ export function AuthForm({ mode }: AuthFormProps) {
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || googleLoading}
           className="w-full rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-primary-fg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading
