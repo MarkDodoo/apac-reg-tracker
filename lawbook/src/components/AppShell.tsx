@@ -108,7 +108,7 @@ export function AppShell({
         }`}
       >
         <div
-          className={`flex w-full items-center justify-between px-5 py-3 sm:px-8 ${
+          className={`flex h-14 w-full items-center justify-between px-5 sm:px-8 ${
             askRoute ? "" : "mx-auto max-w-6xl"
           }`}
         >
@@ -127,7 +127,7 @@ export function AppShell({
                 <svg
                   viewBox="0 0 24 24"
                   aria-hidden="true"
-                  className="h-5 w-5"
+                  className="h-5 w-5 translate-y-px"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="1.8"
@@ -140,7 +140,7 @@ export function AppShell({
               </button>
             )}
             <Link href="/" className="flex items-center gap-2.5">
-              <span className="font-serif text-lg font-medium tracking-tight text-foreground">
+              <span className="font-serif text-lg font-medium leading-none tracking-tight text-foreground">
                 Lawplain<span className="text-accent">.</span>
               </span>
             </Link>
@@ -233,7 +233,11 @@ export function AppShell({
       </aside>
 
       <div
-        className={`flex min-h-0 flex-1 flex-col transition-[padding] ${EASE} ${contentPad}`}
+        className={`relative z-30 flex min-h-0 flex-1 flex-col bg-background transition-[padding,margin,border-radius] ${
+          askRoute ? "duration-300 ease-[var(--ease-smooth-out)]" : EASE
+        } ${contentPad} ${
+          askRoute && askSidebarOpen ? "lg:ml-72 lg:rounded-l-2xl" : ""
+        }`}
       >
         <div className="flex min-h-0 flex-1">{children}</div>
         {!hideFooter && footer}
