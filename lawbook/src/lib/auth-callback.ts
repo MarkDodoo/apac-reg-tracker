@@ -30,3 +30,25 @@ export function safeNextPath(value: string | null): string {
     return "/";
   }
 }
+
+export function safeContinuationPath(value: string | null): string {
+  const path = safeNextPath(value);
+  const pathname = new URL(path, INTERNAL_ORIGIN).pathname;
+  if (
+    pathname === "/welcome" ||
+    pathname.startsWith("/welcome/") ||
+    pathname === "/sign-in" ||
+    pathname.startsWith("/sign-in/") ||
+    pathname === "/sign-up" ||
+    pathname.startsWith("/sign-up/") ||
+    pathname.startsWith("/api/auth/")
+  ) {
+    return "/";
+  }
+  return path;
+}
+
+export function buildWelcomePath(next: string | null): string {
+  const continuation = safeContinuationPath(next);
+  return `/welcome?next=${encodeURIComponent(continuation)}`;
+}

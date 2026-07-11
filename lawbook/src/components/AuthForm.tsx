@@ -3,13 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useRef, useState } from "react";
-import {
-  BookIcon,
-  CheckIcon,
-  SearchIcon,
-  SparkleIcon,
-} from "@/components/icons";
-import { safeNextPath } from "@/lib/auth-callback";
+import { buildWelcomePath, safeNextPath } from "@/lib/auth-callback";
 import { authClient } from "@/lib/auth-client";
 import type { SocialProviderAvailability } from "@/lib/social-providers";
 
@@ -127,47 +121,6 @@ async function accountExists(username: string): Promise<boolean | null> {
   }
 }
 
-function SuccessDestination({
-  href,
-  icon,
-  title,
-  description,
-  last = false,
-}: {
-  href: string;
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  last?: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className={`group flex min-h-20 items-center gap-4 py-3 transition-colors hover:text-accent ${
-        last ? "" : "border-b border-border"
-      }`}
-    >
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-2 text-muted transition-colors group-hover:bg-accent-soft group-hover:text-accent">
-        {icon}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold text-foreground">
-          {title}
-        </span>
-        <span className="mt-0.5 block text-xs leading-5 text-muted">
-          {description}
-        </span>
-      </span>
-      <span
-        aria-hidden="true"
-        className="text-lg text-muted-2 transition-transform group-hover:translate-x-1 group-hover:text-accent"
-      >
-        →
-      </span>
-    </Link>
-  );
-}
-
 export function AuthForm({ mode, socialProviders }: AuthFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -178,9 +131,6 @@ export function AuthForm({ mode, socialProviders }: AuthFormProps) {
   const [error, setError] = useState<AuthErrorState | null>(null);
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState<"google" | null>(null);
-  const [authenticatedUsername, setAuthenticatedUsername] = useState<
-    string | null
-  >(null);
   const operationInFlight = useRef(false);
 
   const isSignUp = mode === "sign-up";
@@ -196,7 +146,10 @@ export function AuthForm({ mode, socialProviders }: AuthFormProps) {
     try {
       const { error } = await authClient.signIn.social({
         provider,
-        callbackURL: new URL(next, window.location.origin).toString(),
+        callbackURL: new URL(
+          buildWelcomePath(next),
+          window.location.origin,
+        ).toString(),
       });
       if (error) throw error;
     } catch (err) {
@@ -273,7 +226,7 @@ export function AuthForm({ mode, socialProviders }: AuthFormProps) {
 
         setPassword("");
         setConfirmPassword("");
-        setAuthenticatedUsername(cleanUsername);
+        router.replace(buildWelcomePath(next));
         router.refresh();
         return;
       } else {
@@ -297,7 +250,7 @@ export function AuthForm({ mode, socialProviders }: AuthFormProps) {
         }
 
         setPassword("");
-        setAuthenticatedUsername(cleanUsername);
+        router.replace(buildWelcomePath(next));
         router.refresh();
         return;
       }
@@ -323,69 +276,6 @@ export function AuthForm({ mode, socialProviders }: AuthFormProps) {
       operationInFlight.current = false;
       setLoading(false);
     }
-  }
-
-  if (authenticatedUsername) {
-    const successLabel = isSignUp
-      ? "Account created successfully"
-      : "Signed in successfully";
-
-    return (
-      <section
-        aria-labelledby="authentication-success-title"
-        className="motion-fade-up mx-auto w-full max-w-4xl py-8 sm:py-12"
-      >
-        <div className="grid items-center gap-8 md:grid-cols-[minmax(0,1.1fr)_minmax(18rem,0.9fr)] md:gap-14">
-          <div>
-            <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-accent-soft text-accent">
-              <CheckIcon className="h-6 w-6" />
-            </div>
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-accent">
-              {successLabel}
-            </p>
-            <h1
-              id="authentication-success-title"
-              className="mt-2 max-w-xl font-serif text-4xl font-medium leading-tight tracking-tight text-foreground sm:text-5xl"
-            >
-              {isSignUp ? "Welcome" : "Welcome back"}, {authenticatedUsername}.
-            </h1>
-            <p className="mt-4 max-w-xl text-base leading-7 text-muted">
-              {isSignUp
-                ? "Your account is ready. Start exploring Singapore law, ask a research question, or build your saved workspace."
-                : "You're signed in. Continue exploring Singapore law, ask a research question, or return to your saved workspace."}
-            </p>
-          </div>
-
-          <nav
-            aria-label={`${successLabel} next steps`}
-            className="border-t border-border pt-5 md:border-l md:border-t-0 md:pl-10 md:pt-0"
-          >
-            <p className="pb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-2">
-              Choose where to begin
-            </p>
-            <SuccessDestination
-              href="/"
-              icon={<SearchIcon className="h-5 w-5" />}
-              title="Go to Search"
-              description="Find judgments, legislation, and legal materials."
-            />
-            <SuccessDestination
-              href="/ask"
-              icon={<SparkleIcon className="h-5 w-5" />}
-              title="Ask Lawplain"
-              description="Research a legal question with cited answers."
-            />
-            <SuccessDestination
-              href="/saved"
-              icon={<BookIcon className="h-5 w-5" />}
-              title="View saved research"
-              description="Organise the authorities and answers you keep."
-              last
-            />
-          </nav>
-        </div>
-      </section>
-    );
   }
 
   return (

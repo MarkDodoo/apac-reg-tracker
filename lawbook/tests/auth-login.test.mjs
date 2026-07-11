@@ -13,7 +13,7 @@ test("Google OAuth preserves a safe post-auth destination", () => {
   assert.match(form, /onSocialSignIn\("google"\)/);
   assert.match(
     form,
-    /callbackURL: new URL\(next, window\.location\.origin\)\.toString\(\)/,
+    /callbackURL: new URL\([\s\S]*buildWelcomePath\(next\)[\s\S]*window\.location\.origin/,
   );
   assert.match(form, /Continue with Google/);
   assert.match(form, /socialLoading === "google"/);
@@ -121,29 +121,14 @@ test("sign-up account-check failures are explicit and actionable", () => {
   assert.match(route, /status: 503/);
 });
 
-test("successful sign-up replaces the form with useful next actions", () => {
+test("successful username auth uses the shared onboarding continuation", () => {
   const form = read("src/components/AuthForm.tsx");
 
-  assert.match(form, /setAuthenticatedUsername\(cleanUsername\)/);
-  assert.match(form, /Account created/);
-  assert.match(form, /Welcome/);
-  assert.match(form, /href="\/"[\s\S]*Go to Search/);
-  assert.match(form, /href="\/ask"[\s\S]*Ask Lawplain/);
-  assert.match(form, /href="\/saved"[\s\S]*View saved research/);
-});
-
-test("successful sign-in replaces the form with the same useful next actions", () => {
-  const form = read("src/components/AuthForm.tsx");
-  const signInPage = read("src/app/sign-in/page.tsx");
-  const signUpPage = read("src/app/sign-up/page.tsx");
-
-  assert.match(
+  assert.match(form, /buildWelcomePath\(next\)/);
+  assert.match(form, /router\.replace\(buildWelcomePath\(next\)\)/);
+  assert.match(form, /router\.refresh\(\)/);
+  assert.doesNotMatch(
     form,
-    /authClient\.signIn\.username[\s\S]*setAuthenticatedUsername\(cleanUsername\)/,
+    /authenticatedUsername|authentication-success-title/,
   );
-  assert.match(form, /Signed in successfully/);
-  assert.match(form, /Welcome back/);
-  assert.match(form, /Continue exploring Singapore law/);
-  assert.match(signInPage, /max-w-5xl/);
-  assert.match(signUpPage, /max-w-5xl/);
 });

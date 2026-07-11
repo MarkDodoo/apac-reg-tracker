@@ -9,6 +9,12 @@ import { ScoreBar } from "@/components/ScoreBar";
 import { Snippet } from "@/components/Snippet";
 import { authClient } from "@/lib/auth-client";
 import {
+  canonicalFilterFields,
+  canonicalSearchParams,
+  canonicalSearchSignature,
+  canonicalSearchState,
+} from "@/lib/search-state";
+import {
   ApiError,
   type SearchHit,
   type SearchResponse,
@@ -72,24 +78,20 @@ interface SearchHistoryEntry {
 
 const DEBOUNCE_MS = 250;
 const MIN_CHARS = 3; // 1-2 char FTS prefixes (e.g. "sa") scan the whole corpus
-const FILTER_KEYS: (keyof Filters)[] = [
-  "court",
-  "year_range",
-  "judge",
-  "kind",
-  "speaker",
-  "since",
-];
+function filtersFromSearchParams(params: URLSearchParams): Filters {
+  return canonicalSearchState(params).filters as Filters;
+}
 
-function filtersFromSearchParams(params: {
-  get(name: string): string | null;
-}): Filters {
-  const filters: Filters = {};
-  for (const key of FILTER_KEYS) {
-    const value = params.get(key)?.trim();
-    if (value) filters[key] = value;
-  }
-  return filters;
+export function searchStateFromParams(params: URLSearchParams): {
+  tab: TabId;
+  query: string;
+  filters: Filters;
+} {
+  return canonicalSearchState(params) as {
+    tab: TabId;
+    query: string;
+    filters: Filters;
+  };
 }
 
 function buildSearchParams(
@@ -97,15 +99,7 @@ function buildSearchParams(
   query: string,
   filters: Filters,
 ): URLSearchParams {
-  const params = new URLSearchParams();
-  params.set("tab", tab);
-  const cleanQuery = query.trim();
-  if (cleanQuery) params.set("q", cleanQuery);
-  for (const key of FILTER_KEYS) {
-    const value = filters[key]?.trim();
-    if (value) params.set(key, value);
-  }
-  return params;
+  return canonicalSearchParams(tab, query, filters);
 }
 
 function runSearch(
@@ -177,7 +171,11 @@ export function SearchExplorer({
   const [recentSearches, setRecentSearches] = useState<SearchHistoryEntry[]>(
     [],
   );
+  const [composing, setComposing] = useState(false);
   const seq = useRef(0);
+  const applyingUrlState = useRef("");
+  const focusedUrl = useRef("");
+  const searchInput = useRef<HTMLInputElement>(null);
   const lastRecorded = useRef("");
   const { data: session } = authClient.useSession();
   const isSignedIn = Boolean(session?.user);
@@ -193,37 +191,87 @@ export function SearchExplorer({
     setError(null);
   }
 
+  const urlKey = searchParams.toString();
+  const localSearchSignature = canonicalSearchSignature(tab, q, filters);
+  const localSearchSignatureRef = useRef(localSearchSignature);
+  localSearchSignatureRef.current = localSearchSignature;
   useEffect(() => {
-    const params = buildSearchParams(tab, q, filters);
-    const next = `/?${params.toString()}`;
-    if (
-      window.location.pathname === "/" &&
-      `${window.location.pathname}${window.location.search}` !== next
-    ) {
-      router.replace(next, { scroll: false });
+    const params = new URLSearchParams(urlKey);
+    const inbound = searchStateFromParams(params);
+    const signature = canonicalSearchSignature(
+      inbound.tab,
+      inbound.query,
+      inbound.filters,
+    );
+    if (signature !== localSearchSignatureRef.current) {
+      applyingUrlState.current = signature;
+      setTab(inbound.tab);
+      setQ(inbound.query);
+      setFilters(inbound.filters);
+      setShowFilters(Object.values(inbound.filters).some(Boolean));
     }
-  }, [tab, q, filters, router]);
+
+    if (params.get("focus") !== "search") {
+      focusedUrl.current = "";
+    } else if (focusedUrl.current !== urlKey) {
+      focusedUrl.current = urlKey;
+      searchInput.current?.focus();
+    }
+  }, [urlKey]);
 
   useEffect(() => {
-    const query = q.trim();
-    if (query.length < MIN_CHARS) {
-      setData(null);
-      setError(null);
-      setLoading(false);
+    if (composing) return;
+    const signature = buildSearchParams(tab, q, filters).toString();
+    if (signature === applyingUrlState.current) {
+      applyingUrlState.current = "";
       return;
     }
+    const timer = setTimeout(() => {
+      const current = new URLSearchParams(window.location.search);
+      if (current.toString() !== urlKey) return;
+      const canonicalCurrent = buildSearchParams(
+        searchStateFromParams(current).tab,
+        searchStateFromParams(current).query,
+        searchStateFromParams(current).filters,
+      ).toString();
+      if (window.location.pathname === "/" && canonicalCurrent !== signature) {
+        router.replace(`/?${signature}`, { scroll: false });
+      }
+    }, DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [tab, q, filters, router, urlKey, composing]);
+
+  const searchSignature = localSearchSignature;
+  useEffect(() => {
     const id = ++seq.current;
     const controller = new AbortController();
+    setData(null);
+    setError(null);
+    setLoading(false);
+    if (composing) return () => controller.abort();
+
+    const current = searchStateFromParams(new URLSearchParams(searchSignature));
+    const snapshot = {
+      tab: current.tab,
+      query: current.query,
+      filters: Object.freeze({ ...current.filters }),
+    };
+    if (snapshot.query.length < MIN_CHARS) return () => controller.abort();
+
     const timer = setTimeout(async () => {
+      if (id !== seq.current) return;
       setLoading(true);
-      setError(null);
       try {
-        const res = await runSearch(tab, query, filters, controller.signal);
-        if (id === seq.current) setData(res);
+        const res = await runSearch(
+          snapshot.tab,
+          snapshot.query,
+          snapshot.filters,
+          controller.signal,
+        );
+        if (id === seq.current && !controller.signal.aborted) setData(res);
       } catch (err) {
         if (controller.signal.aborted) return;
         if (id === seq.current) {
-          setData(null);
           setError(
             err instanceof ApiError
               ? `${err.status} — ${err.message}`
@@ -238,7 +286,7 @@ export function SearchExplorer({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [q, tab, filters]);
+  }, [searchSignature, composing]);
 
   const loadRecentSearches = useCallback(
     async ({ clearOnError = true }: { clearOnError?: boolean } = {}) => {
@@ -327,13 +375,39 @@ export function SearchExplorer({
     loadRecentSearches,
   ]);
 
+  const visibleFilterNames = showFilters
+    ? tab === "judgments"
+      ? ["court", "judge"]
+      : tab === "practice"
+        ? ["court"]
+        : tab === "statutes"
+          ? ["kind"]
+          : tab === "hansard"
+            ? ["speaker", "since"]
+            : []
+    : [];
+  const hiddenFilterFields = canonicalFilterFields(
+    filters,
+    visibleFilterNames,
+  ) as { name: keyof Filters; value: string }[];
+
   return (
-    <section className="w-full">
+    <form action="/" method="get" className="w-full" aria-busy={loading}>
+      {hiddenFilterFields.map(({ name, value }) => (
+        <input key={name} type="hidden" name={name} value={value} />
+      ))}
       <div className="relative">
         <SearchIcon className="pointer-events-none absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-2" />
         <input
+          ref={searchInput}
+          name="q"
           value={q}
           onChange={(e) => setQ(e.target.value)}
+          onCompositionStart={() => setComposing(true)}
+          onCompositionEnd={(e) => {
+            setQ(e.currentTarget.value);
+            setComposing(false);
+          }}
           placeholder={PLACEHOLDERS[tab]}
           aria-label={`Search ${TABS.find((t) => t.id === tab)?.label ?? "corpus"}`}
           autoComplete="off"
@@ -439,10 +513,21 @@ export function SearchExplorer({
         {TABS.map((t) => {
           const active = t.id === tab;
           return (
-            <button
+            <Link
               key={t.id}
-              type="button"
-              onClick={() => selectTab(t.id)}
+              href={`/?${buildSearchParams(t.id, q, filters).toString()}`}
+              onClick={(event) => {
+                if (
+                  event.button !== 0 ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey
+                )
+                  return;
+                event.preventDefault();
+                selectTab(t.id);
+              }}
               className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm transition-colors ${
                 active
                   ? "bg-accent-soft font-medium text-accent"
@@ -450,9 +535,10 @@ export function SearchExplorer({
               }`}
             >
               {t.label}
-            </button>
+            </Link>
           );
         })}
+        <input type="hidden" name="tab" value={tab} />
       </div>
 
       {(() => {
@@ -510,7 +596,14 @@ export function SearchExplorer({
         />
       )}
 
-      <div className="mt-5">
+      <div className="mt-5" aria-live="polite" aria-atomic="false">
+        <output className="sr-only">
+          {loading
+            ? "Searching"
+            : data
+              ? `${data.count} search result${data.count === 1 ? "" : "s"}`
+              : (error ?? "")}
+        </output>
         {hasQuery && error && (
           <div className="rounded-lg border border-border bg-surface p-5 text-sm text-muted">
             {error}
@@ -569,7 +662,7 @@ export function SearchExplorer({
         )}
         {hasQuery && !error && !data && loading && <SkeletonList />}
       </div>
-    </section>
+    </form>
   );
 }
 
@@ -626,6 +719,7 @@ function FilterRow({
     fields.push(
       <Field key="court" label="Court">
         <select
+          name="court"
           value={filters.court ?? ""}
           onChange={(e) => onChange({ court: e.target.value || undefined })}
           className={inputCls}
@@ -670,6 +764,7 @@ function FilterRow({
       </Field>,
       <Field key="judge" label="Coram" className="w-44">
         <input
+          name="judge"
           value={filters.judge ?? ""}
           onChange={(e) => onChange({ judge: e.target.value || undefined })}
           placeholder="Judge name"
@@ -682,6 +777,7 @@ function FilterRow({
     fields.push(
       <Field key="kind" label="Status">
         <select
+          name="kind"
           value={filters.kind ?? ""}
           onChange={(e) => onChange({ kind: e.target.value || undefined })}
           className={inputCls}
@@ -697,6 +793,7 @@ function FilterRow({
     fields.push(
       <Field key="speaker" label="Speaker" className="w-44">
         <input
+          name="speaker"
           value={filters.speaker ?? ""}
           onChange={(e) => onChange({ speaker: e.target.value || undefined })}
           placeholder="Speaker name"
@@ -706,6 +803,7 @@ function FilterRow({
       <Field key="since" label="On or after">
         <input
           type="date"
+          name="since"
           value={filters.since ?? ""}
           onChange={(e) => onChange({ since: e.target.value || undefined })}
           className={inputCls}
