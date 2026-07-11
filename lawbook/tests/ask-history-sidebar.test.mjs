@@ -433,6 +433,10 @@ test("guests can open Ask but submitting requires an account", () => {
   );
   assert.match(threadPage, /getSession\(new Headers\(await headers\(\)\)\)/);
   assert.match(threadPage, /redirect\(`\/sign-in\?next=/);
+  assert.match(
+    threadPage,
+    /getThread\(session\.user\.id, id\)[\s\S]*if \(!thread\) notFound\(\)/,
+  );
   assert.match(askRoute, /if \(!session\?\.user\?\.id\)/);
   assert.match(askRoute, /status: 401/);
   assert.match(

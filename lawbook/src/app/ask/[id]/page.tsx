@@ -7,8 +7,9 @@
  */
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { AskAgent } from "@/components/AskAgent";
+import { getThread } from "@/lib/ask-threads";
 import { getSession } from "@/lib/auth";
 import { buildMetadata } from "@/lib/seo";
 
@@ -35,6 +36,8 @@ export default async function AskThreadPage({
   if (!session?.user?.id) {
     redirect(`/sign-in?next=${encodeURIComponent(`/ask/${id}`)}`);
   }
+  const thread = await getThread(session.user.id, id);
+  if (!thread) notFound();
 
   return (
     <main className="h-[calc(100dvh-3.5rem)] min-h-0 w-full overflow-hidden">

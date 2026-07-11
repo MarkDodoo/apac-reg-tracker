@@ -93,8 +93,11 @@ Deploy to Cloudflare:
 
 ```sh
 cd lawbook
-npm run cf:build && npx wrangler deploy
+npm run cf:build && npm run cf:deploy
 ```
+
+`cf:deploy` applies pending production D1 migrations before deploying the Worker,
+so application code and the database schema stay in sync.
 
 ---
 
