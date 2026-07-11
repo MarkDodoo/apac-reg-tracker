@@ -42,6 +42,25 @@ export interface ProcessChunk {
   exitCode?: number;
 }
 
+export interface ProcessResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  stdoutTruncated: boolean;
+  stderrTruncated: boolean;
+}
+
+const MAX_CONNECT_FRAME_BYTES = 1_000_000;
+const MAX_PROCESS_OUTPUT_BYTES = 1_000_000;
+
+function boundedUtf8(value: string, maxBytes: number): string {
+  const bytes = new TextEncoder().encode(value);
+  if (bytes.length <= maxBytes) return value;
+  return new TextDecoder().decode(bytes.slice(0, Math.max(0, maxBytes)), {
+    stream: true,
+  });
+}
+
 // ─── Connect RPC envelope codec ─────────────────────────────────────────
 
 /**
@@ -90,6 +109,9 @@ async function* parseConnectStream(
       let i = 0;
       while (i + 5 <= buf.length) {
         const length = readU32BE(buf, i + 1);
+        if (length > MAX_CONNECT_FRAME_BYTES) {
+          throw new Error("sandbox response frame exceeded limit");
+        }
         if (i + 5 + length > buf.length) break; // incomplete — wait for more
         const payload = buf.subarray(i + 5, i + 5 + length);
         i += 5 + length;
@@ -113,7 +135,10 @@ async function* parseConnectStream(
 
 export const GRAFF_DOWNLOAD_URL =
   process.env.GRAFF_DOWNLOAD_URL ??
-  "https://github.com/justrach/codegraff/releases/download/v0.0.15/graff-x86_64-linux.tar.gz";
+  "https://github.com/justrach/codegraff/releases/download/v0.0.200/graff-x86_64-linux.tar.gz";
+
+export const GRAFF_DOWNLOAD_SHA256 =
+  "3fefe2bc01edd64f4974e0c9a529cab0b7ebd0cb0da5ef2e30c4d256d1856351";
 
 export const GRAFF_BIN_PATH = "/tmp/graff-x86_64-linux/graff";
 
@@ -224,20 +249,27 @@ export class CubeSandbox {
     }
   }
 
-  /** Run a process to completion (non-streaming). Collects all stdout/stderr. */
-  async runProcess(
-    sid: string,
-    opts: ProcessOptions,
-  ): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
+  /** Run a process to completion with independently bounded output streams. */
+  async runProcess(sid: string, opts: ProcessOptions): Promise<ProcessResult> {
     let stdout = "";
     let stderr = "";
     let exitCode: number | null = null;
+    let stdoutTruncated = false;
+    let stderrTruncated = false;
     for await (const chunk of this.streamProcess(sid, opts)) {
-      if (chunk.type === "stdout") stdout += chunk.data;
-      else if (chunk.type === "stderr") stderr += chunk.data;
-      else if (chunk.type === "end") exitCode = chunk.exitCode ?? null;
+      if (chunk.type === "stdout") {
+        const remaining = MAX_PROCESS_OUTPUT_BYTES - Buffer.byteLength(stdout);
+        const bounded = boundedUtf8(chunk.data, remaining);
+        stdout += bounded;
+        if (bounded !== chunk.data) stdoutTruncated = true;
+      } else if (chunk.type === "stderr") {
+        const remaining = MAX_PROCESS_OUTPUT_BYTES - Buffer.byteLength(stderr);
+        const bounded = boundedUtf8(chunk.data, remaining);
+        stderr += bounded;
+        if (bounded !== chunk.data) stderrTruncated = true;
+      } else if (chunk.type === "end") exitCode = chunk.exitCode ?? null;
     }
-    return { stdout, stderr, exitCode };
+    return { stdout, stderr, exitCode, stdoutTruncated, stderrTruncated };
   }
 
   /** Read a file from the sandbox via the envd files API. Null on 404. */
@@ -260,17 +292,62 @@ export class CubeSandbox {
     sid: string,
     downloadUrl: string = GRAFF_DOWNLOAD_URL,
   ): Promise<void> {
-    const result = await this.runProcess(sid, {
-      cmd: "/bin/bash",
-      args: [
-        "-c",
-        `cd /tmp && curl -sL "${downloadUrl}" -o graff.tar.gz && tar xzf graff.tar.gz && chmod +x ${GRAFF_BIN_PATH} && echo OK`,
-      ],
+    const url = new URL(downloadUrl);
+    if (url.protocol !== "https:")
+      throw new Error("graff download must use HTTPS");
+    const checksum = `${GRAFF_DOWNLOAD_SHA256}  /tmp/graff.tar.gz\n`;
+    const steps: ProcessOptions[] = [
+      {
+        cmd: "/bin/bash",
+        args: ["-c", `printf %s "$CHECKSUM" > /tmp/graff.sha256`],
+        envs: { CHECKSUM: checksum },
+      },
+      {
+        cmd: "/usr/bin/curl",
+        args: [
+          "--fail",
+          "--silent",
+          "--show-error",
+          "--location",
+          "--output",
+          "/tmp/graff.tar.gz",
+          url.href,
+        ],
+      },
+      {
+        cmd: "/usr/bin/sha256sum",
+        args: ["--check", "/tmp/graff.sha256"],
+      },
+      { cmd: "/bin/tar", args: ["xzf", "/tmp/graff.tar.gz", "-C", "/tmp"] },
+      { cmd: "/bin/chmod", args: ["+x", GRAFF_BIN_PATH] },
+    ];
+    for (const step of steps) {
+      const result = await this.runProcess(sid, {
+        ...step,
+        cwd: "/tmp",
+        timeoutMs: 60_000,
+      });
+      if (result.exitCode !== null && result.exitCode !== 0) {
+        throw new Error("installGraff failed");
+      }
+      if (
+        step.cmd.endsWith("sha256sum") &&
+        (!result.stdout.includes(": OK") || result.stdout.includes("FAILED"))
+      ) {
+        throw new Error("installGraff checksum verification failed");
+      }
+    }
+    const version = await this.runProcess(sid, {
+      cmd: GRAFF_BIN_PATH,
+      args: ["--version"],
       cwd: "/tmp",
-      timeoutMs: 60_000,
+      timeoutMs: 10_000,
     });
-    if (!result.stdout.includes("OK")) {
-      throw new Error(`installGraff failed: ${result.stderr || result.stdout}`);
+    if (
+      (version.exitCode !== null && version.exitCode !== 0) ||
+      !(version.stdout || version.stderr).toLowerCase().includes("graff")
+    ) {
+      throw new Error("installGraff executable verification failed");
     }
   }
 }
@@ -303,7 +380,7 @@ export function streamProcess(
 export function runProcess(
   sid: string,
   opts: ProcessOptions,
-): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
+): Promise<ProcessResult> {
   return defaultClient().runProcess(sid, opts);
 }
 export function readSandboxFile(

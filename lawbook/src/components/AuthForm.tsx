@@ -2,17 +2,20 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   BookIcon,
   CheckIcon,
   SearchIcon,
   SparkleIcon,
 } from "@/components/icons";
+import { safeNextPath } from "@/lib/auth-callback";
 import { authClient } from "@/lib/auth-client";
+import type { SocialProviderAvailability } from "@/lib/social-providers";
 
 type AuthFormProps = {
   mode: "sign-in" | "sign-up";
+  socialProviders: SocialProviderAvailability;
 };
 
 type AuthErrorState =
@@ -124,17 +127,6 @@ async function accountExists(username: string): Promise<boolean | null> {
   }
 }
 
-function safeNextPath(value: string | null): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/";
-  if (
-    [...value].some(
-      (char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127,
-    )
-  )
-    return "/";
-  return value;
-}
-
 function SuccessDestination({
   href,
   icon,
@@ -176,7 +168,7 @@ function SuccessDestination({
   );
 }
 
-export function AuthForm({ mode }: AuthFormProps) {
+export function AuthForm({ mode, socialProviders }: AuthFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = safeNextPath(searchParams.get("next"));
@@ -185,20 +177,25 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<AuthErrorState | null>(null);
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
+  const [socialLoading, setSocialLoading] = useState<"google" | null>(null);
   const [authenticatedUsername, setAuthenticatedUsername] = useState<
     string | null
   >(null);
+  const operationInFlight = useRef(false);
 
   const isSignUp = mode === "sign-up";
+  const hasSocialProvider = socialProviders.google;
 
-  async function onGoogleSignIn() {
+  async function onSocialSignIn(provider: "google") {
+    if (operationInFlight.current || !socialProviders[provider]) return;
+    operationInFlight.current = true;
+    const providerName = "Google";
     setError(null);
-    setGoogleLoading(true);
+    setSocialLoading(provider);
 
     try {
       const { error } = await authClient.signIn.social({
-        provider: "google",
+        provider,
         callbackURL: new URL(next, window.location.origin).toString(),
       });
       if (error) throw error;
@@ -207,10 +204,12 @@ export function AuthForm({ mode }: AuthFormProps) {
         kind: "text",
         message: errorMessage(
           err,
-          "Google sign-in failed. Please try again or use your username.",
+          `${providerName} sign-in failed. Please try again or use your username.`,
         ),
       });
-      setGoogleLoading(false);
+    } finally {
+      operationInFlight.current = false;
+      setSocialLoading(null);
     }
   }
 
@@ -243,6 +242,8 @@ export function AuthForm({ mode }: AuthFormProps) {
       }
     }
 
+    if (operationInFlight.current) return;
+    operationInFlight.current = true;
     let usernameCheckFailed = false;
 
     setLoading(true);
@@ -319,6 +320,7 @@ export function AuthForm({ mode }: AuthFormProps) {
           : message,
       });
     } finally {
+      operationInFlight.current = false;
       setLoading(false);
     }
   }
@@ -400,42 +402,53 @@ export function AuthForm({ mode }: AuthFormProps) {
             ? "Use a username and password to save research under your profile."
             : "Sign in to use saved research features and Ask Lawplain."}
         </p>
+        <p className="mt-2 text-xs leading-5 text-muted-2">
+          Already have a username/password account? Keep using that method.
+          OAuth may create a separate account; Lawplain does not automatically
+          merge accounts.
+        </p>
       </div>
 
-      <button
-        type="button"
-        onClick={onGoogleSignIn}
-        disabled={loading || googleLoading}
-        className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5">
-          <path
-            fill="#4285F4"
-            d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.91h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.32 2.98-7.4Z"
-          />
-          <path
-            fill="#34A853"
-            d="M12 22c2.7 0 4.97-.9 6.63-2.43l-3.24-2.54c-.9.6-2.05.96-3.39.96-2.61 0-4.82-1.76-5.61-4.13H3.04v2.62A10 10 0 0 0 12 22Z"
-          />
-          <path
-            fill="#FBBC05"
-            d="M6.39 13.86A6.01 6.01 0 0 1 6.08 12c0-.65.11-1.28.31-1.86V7.52H3.04A10 10 0 0 0 2 12c0 1.61.38 3.14 1.04 4.48l3.35-2.62Z"
-          />
-          <path
-            fill="#EA4335"
-            d="M12 6.01c1.47 0 2.79.5 3.82 1.49l2.88-2.88A9.65 9.65 0 0 0 12 2a10 10 0 0 0-8.96 5.52l3.35 2.62C7.18 7.77 9.39 6.01 12 6.01Z"
-          />
-        </svg>
-        {googleLoading ? "Connecting to Google…" : "Continue with Google"}
-      </button>
+      {socialProviders.google && (
+        <button
+          type="button"
+          onClick={() => onSocialSignIn("google")}
+          disabled={loading || socialLoading !== null}
+          className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5">
+            <path
+              fill="#4285F4"
+              d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.91h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.32 2.98-7.4Z"
+            />
+            <path
+              fill="#34A853"
+              d="M12 22c2.7 0 4.97-.9 6.63-2.43l-3.24-2.54c-.9.6-2.05.96-3.39.96-2.61 0-4.82-1.76-5.61-4.13H3.04v2.62A10 10 0 0 0 12 22Z"
+            />
+            <path
+              fill="#FBBC05"
+              d="M6.39 13.86A6.01 6.01 0 0 1 6.08 12c0-.65.11-1.28.31-1.86V7.52H3.04A10 10 0 0 0 2 12c0 1.61.38 3.14 1.04 4.48l3.35-2.62Z"
+            />
+            <path
+              fill="#EA4335"
+              d="M12 6.01c1.47 0 2.79.5 3.82 1.49l2.88-2.88A9.65 9.65 0 0 0 12 2a10 10 0 0 0-8.96 5.52l3.35 2.62C7.18 7.77 9.39 6.01 12 6.01Z"
+            />
+          </svg>
+          {socialLoading === "google"
+            ? "Connecting to Google…"
+            : "Continue with Google"}
+        </button>
+      )}
 
-      <div className="my-5 flex items-center gap-3" aria-hidden="true">
-        <span className="h-px flex-1 bg-border" />
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-2">
-          or
-        </span>
-        <span className="h-px flex-1 bg-border" />
-      </div>
+      {hasSocialProvider && (
+        <div className="my-5 flex items-center gap-3" aria-hidden="true">
+          <span className="h-px flex-1 bg-border" />
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-2">
+            or
+          </span>
+          <span className="h-px flex-1 bg-border" />
+        </div>
+      )}
 
       <form onSubmit={onSubmit} className="space-y-4">
         <label className="block text-sm font-medium text-foreground">
@@ -520,7 +533,7 @@ export function AuthForm({ mode }: AuthFormProps) {
 
         <button
           type="submit"
-          disabled={loading || googleLoading}
+          disabled={loading || socialLoading !== null}
           className="w-full rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-primary-fg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading

@@ -10,7 +10,10 @@
   },
   "routes": [{ "pattern": "lawplain.com", "custom_domain": true }],
   "vars": {
-    "BETTER_AUTH_URL": "https://lawplain.com"
+    "BETTER_AUTH_URL": "https://lawplain.com",
+    "LAWPLAIN_ASK_AGENT_ENABLED": "true",
+    "LAWPLAIN_PUBLIC_HOST": "lawplain.com",
+    "LAWPLAIN_AGENT_CREDENTIAL": "CODEGRAFF_API_KEY"
   },
   "services": [
     {

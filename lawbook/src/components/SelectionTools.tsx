@@ -3,13 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 
-/**
- * Floating selection toolbar for legal documents (issue #66, MVP slice).
- * When a signed-in user selects text inside a [data-selectable] reader, a small
- * icon toolbar appears with "Copy quote" (exact passage + citation + deep link)
- * and, where grounding is supported, "Ask Lawplain about this". Signed-out users
- * are nudged to sign in. Quote persistence + a Quotes tab are a follow-up.
- */
+const MAX_QUOTE_LENGTH = 5_000;
+
+type SelectionDraft = {
+  exactText: string;
+  anchor: string;
+  startOffset: number;
+  endOffset: number;
+  contextBefore: string;
+  contextAfter: string;
+};
+
 export function SelectionTools({
   title,
   citation,
@@ -19,63 +23,136 @@ export function SelectionTools({
   title: string;
   citation: string;
   path: string;
-  /** Pass "judgment" | "statute" to show an Ask shortcut; omit otherwise. */
   askKind?: "judgment" | "statute";
 }) {
   const { data: session } = authClient.useSession();
   const isSignedIn = Boolean(session?.user);
   const [rect, setRect] = useState<{ top: number; left: number } | null>(null);
-  const [text, setText] = useState("");
+  const [draft, setDraft] = useState<SelectionDraft | null>(null);
   const [copied, setCopied] = useState(false);
-  const [nudge, setNudge] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function update() {
-      const sel = window.getSelection();
-      if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
-        setRect(null);
-        setNudge(false);
-        return;
-      }
-      const node = sel.anchorNode;
-      const host =
-        node?.nodeType === 1
-          ? (node as Element)
-          : (node?.parentElement ?? null);
-      if (barRef.current?.contains(host)) return; // ignore selection in the bar
-      const selectable = host?.closest("[data-selectable]");
-      const selected = sel.toString().trim();
-      if (!selectable || selected.length < 2) {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
         setRect(null);
         return;
       }
-      const r = sel.getRangeAt(0).getBoundingClientRect();
-      setText(selected);
-      setRect({ top: r.top - 10, left: r.left + r.width / 2 });
+      const range = selection.getRangeAt(0);
+      const start =
+        range.startContainer.nodeType === 1
+          ? (range.startContainer as Element)
+          : range.startContainer.parentElement;
+      const end =
+        range.endContainer.nodeType === 1
+          ? (range.endContainer as Element)
+          : range.endContainer.parentElement;
+      if (barRef.current?.contains(start)) return;
+      const selectable = start?.closest("[data-selectable]");
+      const startBlock = start?.closest<HTMLElement>("[data-section-id]");
+      const endBlock = end?.closest<HTMLElement>("[data-section-id]");
+      const exactText = selection.toString();
+      if (
+        !selectable ||
+        !startBlock ||
+        startBlock !== endBlock ||
+        !selectable.contains(endBlock) ||
+        exactText.trim().length < 2 ||
+        exactText.length > MAX_QUOTE_LENGTH
+      ) {
+        setRect(null);
+        return;
+      }
+      const beforeRange = document.createRange();
+      beforeRange.selectNodeContents(startBlock);
+      beforeRange.setEnd(range.startContainer, range.startOffset);
+      const startOffset = beforeRange.toString().length;
+      const endOffset = startOffset + exactText.length;
+      const sourceText = startBlock.textContent ?? "";
+      const anchor = startBlock.dataset.sectionId || startBlock.id;
+      const box = range.getBoundingClientRect();
+      setDraft({
+        exactText,
+        anchor,
+        startOffset,
+        endOffset,
+        contextBefore: sourceText.slice(
+          Math.max(0, startOffset - 300),
+          startOffset,
+        ),
+        contextAfter: sourceText.slice(endOffset, endOffset + 300),
+      });
+      setSaved(false);
+      setError(null);
+      setRect({ top: box.top - 10, left: box.left + box.width / 2 });
     }
     document.addEventListener("selectionchange", update);
     return () => document.removeEventListener("selectionchange", update);
   }, []);
 
-  if (!rect) return null;
-
-  const link =
-    (typeof window !== "undefined" ? window.location.origin : "") + path;
-  const quote = `"${text}"\n\n— ${title}${citation ? `, ${citation}` : ""}\n${link}`;
+  if (!rect || !draft) return null;
+  const deepPath = `${path}#${encodeURIComponent(draft.anchor)}`;
+  const link = `${window.location.origin}${deepPath}`;
+  const formatted = `“${draft.exactText}”\n\n— ${title}${citation ? `, ${citation}` : ""}\n${link}`;
 
   async function copyQuote() {
-    if (!isSignedIn) {
-      setNudge(true);
-      return;
-    }
+    await navigator.clipboard.writeText(formatted);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  }
+
+  async function saveQuote() {
+    if (!draft || saving) return;
+    setSaving(true);
+    setError(null);
     try {
-      await navigator.clipboard.writeText(quote);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      const res = await fetch("/api/quotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...draft,
+          docType: askKind,
+          docId: citation,
+          sourceTitle: title,
+          citation,
+          path: deepPath,
+        }),
+      });
+      if (!res.ok) {
+        setError("Could not save quote.");
+        return;
+      }
+      setSaved(true);
     } catch {
-      // Clipboard may be unavailable; fail quietly.
+      setError("Could not save quote.");
+    } finally {
+      setSaving(false);
     }
+  }
+
+  function askAboutSelection() {
+    const userId = session?.user?.id;
+    if (!userId || !askKind || !draft) return;
+    const prompt =
+      `Explain this passage in context:\n\n“${draft.exactText}”`.slice(
+        0,
+        5_500,
+      );
+    try {
+      sessionStorage.setItem(
+        `ask:v2:${userId}:draft:${askKind}:${citation}`,
+        prompt,
+      );
+    } catch {
+      // Ask remains usable if storage is unavailable.
+    }
+    window.location.assign(
+      `/ask?cite=${encodeURIComponent(citation)}&kind=${askKind}`,
+    );
   }
 
   return (
@@ -85,54 +162,58 @@ export function SelectionTools({
       style={{ top: rect.top, left: rect.left }}
     >
       <div className="flex items-center gap-0.5 rounded-full border border-border bg-surface p-1 shadow-lg">
-        {nudge ? (
-          <a
-            href="/sign-in"
-            className="rounded-full px-3 py-1 text-xs font-medium text-accent hover:underline"
+        {isSignedIn ? (
+          <button
+            type="button"
+            onClick={() => void saveQuote()}
+            disabled={saved || saving}
+            className="rounded-full px-3 py-1.5 text-xs font-medium text-muted hover:bg-surface-2 hover:text-foreground disabled:opacity-60"
           >
-            Sign in to use quote tools
-          </a>
+            {saved ? "Saved" : saving ? "Saving…" : "Save quote"}
+          </button>
         ) : (
-          <>
-            <button
-              type="button"
-              onClick={copyQuote}
-              aria-label="Copy quote with citation"
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
+          <div className="flex items-center gap-2 px-2 py-1 text-xs">
+            <span className="text-muted">Save with an account</span>
+            <a
+              href={`/sign-in?next=${encodeURIComponent(path)}`}
+              className="font-medium text-accent hover:underline"
             >
-              <svg
-                viewBox="0 0 16 16"
-                aria-hidden="true"
-                className="h-3.5 w-3.5"
-                fill="currentColor"
-              >
-                {copied ? (
-                  <path d="M6.5 11.2 3.3 8l-1 1 4.2 4.2 7.2-7.2-1-1z" />
-                ) : (
-                  <path d="M5 3h6a2 2 0 0 1 2 2v8h-1.5V5a.5.5 0 0 0-.5-.5H5V3zM3.5 5.5h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-6a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1z" />
-                )}
-              </svg>
-              {copied ? "Copied" : "Quote"}
-            </button>
-            {askKind && citation && (
-              <a
-                href={`/ask?cite=${encodeURIComponent(citation)}&kind=${askKind}`}
-                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
-              >
-                <svg
-                  viewBox="0 0 16 16"
-                  aria-hidden="true"
-                  className="h-3.5 w-3.5"
-                  fill="currentColor"
-                >
-                  <path d="M8 1l1.6 4.4L14 7l-4.4 1.6L8 13l-1.6-4.4L2 7l4.4-1.6z" />
-                </svg>
-                Ask
-              </a>
-            )}
-          </>
+              Sign in
+            </a>
+            <a
+              href={`/sign-up?next=${encodeURIComponent(path)}`}
+              className="font-medium text-accent hover:underline"
+            >
+              Create account
+            </a>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => void copyQuote()}
+          className="rounded-full px-3 py-1.5 text-xs font-medium text-muted hover:bg-surface-2 hover:text-foreground"
+          aria-label="Copy quote with citation and link"
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+        {isSignedIn && askKind && (
+          <button
+            type="button"
+            onClick={askAboutSelection}
+            className="rounded-full px-3 py-1.5 text-xs font-medium text-muted hover:bg-surface-2 hover:text-foreground"
+          >
+            Ask
+          </button>
         )}
       </div>
+      {error && (
+        <p
+          role="alert"
+          className="mt-1 rounded bg-surface px-2 py-1 text-xs text-accent shadow"
+        >
+          {error}
+        </p>
+      )}
     </div>
   );
 }

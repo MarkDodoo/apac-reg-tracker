@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useState } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { AuthMenu } from "@/components/AuthMenu";
 import { useChrome } from "@/components/chrome/ChromeContext";
 import {
@@ -23,36 +29,38 @@ const NAV = [
     href: "/",
     label: "Search",
     icon: SearchIcon,
-    match: (p: string) => p === "/",
   },
   {
     href: "/ask",
     label: "Ask Lawplain",
     icon: SparkleIcon,
-    match: (p: string) => p.startsWith("/ask"),
   },
   {
     href: "/saved",
     label: "Saved",
     icon: BookIcon,
-    match: (p: string) => p.startsWith("/saved"),
   },
   {
     href: "/recents",
     label: "Recents",
     icon: HistoryIcon,
-    match: (p: string) => p.startsWith("/recents"),
   },
 ];
 
 const EASE = "duration-500 ease-[var(--ease-emphasized)]";
 const COLLAPSE_KEY = "lawplain:sidebar-collapsed";
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function matchesPath(path: string, href: string) {
+  return path === href || (href !== "/" && path.startsWith(`${href}/`));
+}
 
 /**
  * App chrome. Idle: a top header bar. As search becomes active the header
  * gracefully collapses and the same navigation slides in as a left sidebar
  * (shadcn-style), and the content shifts to make room. The desktop sidebar can
- * be collapsed to an icon rail (persisted); mobile is always a slim icon rail.
+ * be collapsed to an icon rail (persisted); mobile uses a modal drawer.
  */
 export function AppShell({
   children,
@@ -73,6 +81,11 @@ export function AppShell({
   const pathname = usePathname();
   const askRoute = pathname.startsWith("/ask");
   const [collapsed, setCollapsed] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const drawerRef = useRef<HTMLElement>(null);
+  const drawerTriggerRef = useRef<HTMLButtonElement>(null);
+  const mainContentRef = useRef<HTMLDivElement>(null);
+  const drawerCloseFocus = useRef<"trigger" | "content" | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const { data: session, isPending: sessionPending } = authClient.useSession();
   const sessionUserId = session?.user?.id;
@@ -81,7 +94,7 @@ export function AppShell({
   // protected server-side.
   const visibleNav = NAV;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     try {
       setCollapsed(localStorage.getItem(COLLAPSE_KEY) === "1");
     } catch {
@@ -111,6 +124,92 @@ export function AppShell({
     void pathname;
     setSigningOut(false);
   }, [pathname]);
+
+  useEffect(() => {
+    void pathname;
+    setDrawerOpen((open) => {
+      if (open) drawerCloseFocus.current = "content";
+      return false;
+    });
+  }, [pathname]);
+
+  useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const closeOnDesktop = (event: MediaQueryListEvent | MediaQueryList) => {
+      if (event.matches) {
+        drawerCloseFocus.current = null;
+        setDrawerOpen(false);
+      }
+    };
+    desktop.addEventListener("change", closeOnDesktop);
+    closeOnDesktop(desktop);
+    return () => desktop.removeEventListener("change", closeOnDesktop);
+  }, []);
+
+  useEffect(() => {
+    if (!drawerOpen) {
+      const focusTarget = drawerCloseFocus.current;
+      drawerCloseFocus.current = null;
+      if (focusTarget === "trigger") drawerTriggerRef.current?.focus();
+      if (focusTarget === "content") mainContentRef.current?.focus();
+      return;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const visibleFocusables = () =>
+      Array.from(
+        drawerRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ??
+          [],
+      ).filter(
+        (element) =>
+          element.getClientRects().length > 0 &&
+          !element.closest('[inert], [aria-hidden="true"]'),
+      );
+    visibleFocusables()[0]?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        drawerCloseFocus.current = "trigger";
+        setDrawerOpen(false);
+      } else if (event.key === "Tab") {
+        const focusable = visibleFocusables();
+        if (!focusable.length) {
+          event.preventDefault();
+          drawerRef.current?.focus();
+          return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (
+          event.shiftKey &&
+          (document.activeElement === first ||
+            !drawerRef.current?.contains(document.activeElement))
+        ) {
+          event.preventDefault();
+          last.focus();
+        } else if (
+          !event.shiftKey &&
+          (document.activeElement === last ||
+            !drawerRef.current?.contains(document.activeElement))
+        ) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    const containFocus = (event: FocusEvent) => {
+      if (!drawerRef.current?.contains(event.target as Node)) {
+        (visibleFocusables()[0] ?? drawerRef.current)?.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("focusin", containFocus);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("focusin", containFocus);
+    };
+  }, [drawerOpen]);
 
   useEffect(() => {
     // Recheck immediately after navigation as well as on the polling cadence.
@@ -181,6 +280,11 @@ export function AppShell({
     };
   }, [pathname, sessionUserId, sessionPending, setAskSidebarUnread]);
 
+  const closeDrawerToTrigger = () => {
+    drawerCloseFocus.current = "trigger";
+    setDrawerOpen(false);
+  };
+
   const toggleCollapsed = () => {
     setCollapsed((c) => {
       const next = !c;
@@ -193,22 +297,18 @@ export function AppShell({
     });
   };
 
-  // Label visibility: hidden on the mobile rail and on the collapsed desktop
-  // rail; shown only when the desktop sidebar is expanded.
-  const labelCls = collapsed ? "hidden" : "hidden lg:inline";
-  const asideWidth = collapsed ? "w-16" : "w-16 lg:w-60";
-  const contentPad = searchActive
-    ? collapsed
-      ? "pl-16"
-      : "pl-16 lg:pl-60"
-    : "";
+  const labelCls = collapsed ? "hidden" : "inline";
+  const asideWidth = collapsed ? "lg:w-16" : "lg:w-60";
+  const contentPad = searchActive ? (collapsed ? "lg:pl-16" : "lg:pl-60") : "";
 
   return (
     <>
       <header
+        inert={drawerOpen || undefined}
+        aria-hidden={drawerOpen || undefined}
         className={`sticky top-0 z-40 overflow-hidden bg-background/80 backdrop-blur-md transition-all ${EASE} ${
           searchActive
-            ? "max-h-0 border-b border-transparent opacity-0"
+            ? "max-h-24 border-b border-border opacity-100 lg:max-h-0 lg:border-transparent lg:opacity-0"
             : "max-h-24 border-b border-border opacity-100"
         }`}
       >
@@ -218,6 +318,17 @@ export function AppShell({
           }`}
         >
           <div className="flex items-center gap-1.5">
+            <button
+              ref={drawerTriggerRef}
+              type="button"
+              aria-label="Open navigation"
+              aria-expanded={drawerOpen}
+              aria-controls="mobile-navigation-drawer"
+              onClick={() => setDrawerOpen(true)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted lg:hidden"
+            >
+              <MenuIcon className="h-5 w-5" />
+            </button>
             {askRoute && askSidebarAvailable && (
               <button
                 type="button"
@@ -250,14 +361,19 @@ export function AppShell({
               </span>
             </Link>
           </div>
-          <nav className="flex items-center gap-1">
+          <nav
+            aria-label="Primary"
+            inert={searchActive || undefined}
+            className={`hidden items-center gap-1 ${searchActive ? "" : "lg:flex"}`}
+          >
             {visibleNav.map((tab) => {
-              const active = tab.match(pathname);
+              const active = matchesPath(pathname, tab.href);
               const Icon = tab.icon;
               return (
                 <Link
                   key={tab.href}
                   href={tab.href}
+                  aria-current={active ? "page" : undefined}
                   className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-[color,background-color,opacity] duration-[50ms] ${
                     active
                       ? "bg-accent-soft text-accent"
@@ -287,8 +403,11 @@ export function AppShell({
       </header>
 
       <aside
+        id="desktop-sidebar"
+        aria-label="Desktop navigation"
         aria-hidden={!searchActive}
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-background transition-[transform,width] ${EASE} ${asideWidth} ${
+        inert={!searchActive || undefined}
+        className={`fixed hidden lg:flex inset-y-0 left-0 z-50 flex-col border-r border-border bg-background transition-[transform,width] ${EASE} ${asideWidth} ${
           searchActive ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -307,6 +426,8 @@ export function AppShell({
             type="button"
             onClick={toggleCollapsed}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
+            aria-controls="desktop-sidebar"
             className="hidden rounded-md p-1.5 text-muted-2 transition-colors hover:bg-surface-2 hover:text-foreground lg:inline-flex"
           >
             <svg
@@ -323,14 +444,18 @@ export function AppShell({
             </svg>
           </button>
         </div>
-        <nav className="flex flex-1 flex-col gap-1 px-2 py-2 lg:px-3">
+        <nav
+          aria-label="Primary"
+          className="flex flex-1 flex-col gap-1 px-2 py-2 lg:px-3"
+        >
           {visibleNav.map((tab) => {
-            const active = tab.match(pathname);
+            const active = matchesPath(pathname, tab.href);
             const Icon = tab.icon;
             return (
               <Link
                 key={tab.href}
                 href={tab.href}
+                aria-current={active ? "page" : undefined}
                 title={tab.label}
                 className={`relative flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-[color,background-color,opacity] duration-[50ms] ${
                   active
@@ -365,7 +490,71 @@ export function AppShell({
         </div>
       </aside>
 
+      {drawerOpen && (
+        <div className="fixed inset-0 z-[60] lg:hidden">
+          <button
+            type="button"
+            aria-label="Close navigation"
+            className="absolute inset-0 h-full w-full bg-foreground/35"
+            onClick={closeDrawerToTrigger}
+          />
+          <aside
+            ref={drawerRef}
+            id="mobile-navigation-drawer"
+            role="dialog"
+            aria-modal="true"
+            tabIndex={-1}
+            aria-label="Navigation"
+            className="relative flex h-full w-[min(20rem,85vw)] flex-col border-r border-border bg-background shadow-xl motion-reduce:transition-none"
+          >
+            <div className="flex h-14 items-center justify-between px-5">
+              <Link
+                href="/"
+                className="font-serif text-xl font-medium tracking-tight"
+              >
+                Lawplain<span className="text-accent">.</span>
+              </Link>
+              <button
+                type="button"
+                aria-label="Close navigation"
+                onClick={closeDrawerToTrigger}
+                className="rounded-lg p-2 text-muted-2 hover:bg-surface-2 hover:text-foreground"
+              >
+                <CloseIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <nav
+              aria-label="Primary"
+              className="flex flex-1 flex-col gap-1 px-3 py-2"
+            >
+              {visibleNav.map((tab) => {
+                const active = matchesPath(pathname, tab.href);
+                const Icon = tab.icon;
+                return (
+                  <Link
+                    key={tab.href}
+                    href={tab.href}
+                    aria-current={active ? "page" : undefined}
+                    className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${active ? "bg-accent-soft text-accent" : "text-muted-2 hover:bg-surface-2 hover:text-foreground"}`}
+                  >
+                    <Icon className="h-5 w-5" />
+                    {tab.label}
+                  </Link>
+                );
+              })}
+            </nav>
+            <div className="border-t border-border p-3">
+              <SidebarAuth labelCls="inline" />
+            </div>
+          </aside>
+        </div>
+      )}
+
       <div
+        ref={mainContentRef}
+        tabIndex={-1}
+        inert={drawerOpen || undefined}
+        aria-hidden={drawerOpen || undefined}
         className={`relative z-30 flex min-h-0 flex-1 flex-col bg-background transition-[padding,margin,border-radius] ${
           askRoute ? "duration-300 ease-[var(--ease-smooth-out)]" : EASE
         } ${contentPad} ${
@@ -456,6 +645,38 @@ function SidebarAuth({ labelCls }: { labelCls: string }) {
         <span className={labelCls}>Sign out</span>
       </button>
     </div>
+  );
+}
+
+function MenuIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </svg>
+  );
+}
+
+function CloseIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="m6 6 12 12M18 6 6 18" />
+    </svg>
   );
 }
 

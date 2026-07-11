@@ -24,6 +24,7 @@ import {
   readSandboxFile,
   runProcess,
 } from "@/lib/cubesandbox";
+import { ReasoningSanitizer, sanitizeAnswer } from "@/lib/reasoning-sanitizer";
 import { BASE } from "@/lib/sgjudge";
 
 export const AGENT_MODEL = process.env.LAWPLAIN_AGENT_MODEL ?? "glm-5.2";
@@ -140,6 +141,12 @@ export interface AgentToolEvent {
   duplicate?: boolean;
   count?: number;
 }
+export interface AgentToolRejectedEvent {
+  type: "tool_rejected";
+  name: string;
+  reason: "budget" | "duplicate";
+  message: string;
+}
 export interface AgentDoneEvent {
   /** Turn finished. */
   type: "done";
@@ -156,6 +163,7 @@ export type AgentEvent =
   | AgentTurnEvent
   | AgentProgressEvent
   | AgentToolEvent
+  | AgentToolRejectedEvent
   | AgentDoneEvent
   | AgentErrorEvent;
 
@@ -393,19 +401,42 @@ export async function* askLegalAgent(
       binary: AGENT_BINARY,
       cwd,
       systemPrompt: legalResearchPrompt(),
+      args: ["--max-tool-calls", "6", "--dedupe-tool-calls"],
       // Minimal env: no host secrets reach the yolo-bash agent.
       env: agentEnv(),
     });
 
     let finalText = "";
+    let streamedText = "";
+    const sanitizer = new ReasoningSanitizer();
     let costUsd = 0;
     let contextTokens = 0;
 
     for await (const ev of stream as AsyncGenerator<Event>) {
       if (signal?.aborted) break;
+      const rejected = ev as unknown as {
+        type: string;
+        name?: string;
+        reason?: string;
+        message?: string;
+      };
+      if (rejected.type === "tool_rejected") {
+        const reason = rejected.reason === "duplicate" ? "duplicate" : "budget";
+        yield {
+          type: "tool_rejected",
+          name: rejected.name ?? "tool",
+          reason,
+          message: rejected.message ?? `Tool call rejected (${reason})`,
+        };
+        continue;
+      }
       switch (ev.type) {
         case "text":
-          if (ev.text) yield { type: "delta", text: ev.text };
+          if (ev.text) {
+            const text = sanitizer.push(ev.text);
+            streamedText += text;
+            if (text) yield { type: "delta", text };
+          }
           break;
         case "tool_call": {
           const tool = summarizeToolCall(ev.name, ev.input);
@@ -419,7 +450,7 @@ export async function* askLegalAgent(
           break;
         }
         case "turn":
-          finalText = ev.text;
+          finalText = sanitizeAnswer(ev.text);
           costUsd = ev.cost_usd;
           contextTokens = ev.context_tokens;
           break;
@@ -432,9 +463,12 @@ export async function* askLegalAgent(
     }
 
     if (signal?.aborted) return;
+    const tail = sanitizer.finish();
+    streamedText += tail;
+    if (tail) yield { type: "delta", text: tail };
     yield {
       type: "done",
-      text: finalText,
+      text: finalText || streamedText,
       costUsd,
       contextTokens,
     };
@@ -531,6 +565,7 @@ export async function* askLegalAgentSandboxed(
     };
 
     let finalText = "";
+    const sanitizer = new ReasoningSanitizer();
     let streamedText = "";
     let costUsd = 0;
     let contextTokens = 0;
@@ -555,7 +590,7 @@ export async function* askLegalAgentSandboxed(
       cmd: "/bin/bash",
       args: [
         "-c",
-        `rm -f /tmp/graff.out /tmp/graff.err /tmp/graff.exit /tmp/graff.launch; nohup /bin/bash -lc 'printf %s "$PROMPT_JSON" | "$GRAFF_BIN" --json --yolo --no-telemetry --model "$MODEL" --system-prompt "$SYSTEM_PROMPT" > /tmp/graff.out 2> /tmp/graff.err; echo $? > /tmp/graff.exit' > /tmp/graff.launch 2>&1 < /dev/null & echo $!`,
+        `rm -f /tmp/graff.out /tmp/graff.err /tmp/graff.exit /tmp/graff.launch; nohup /bin/bash -lc 'printf %s "$PROMPT_JSON" | "$GRAFF_BIN" --json --yolo --no-telemetry --max-tool-calls 6 --dedupe-tool-calls --model "$MODEL" --system-prompt "$SYSTEM_PROMPT" > /tmp/graff.out 2> /tmp/graff.err; echo $? > /tmp/graff.exit' > /tmp/graff.launch 2>&1 < /dev/null & echo $!`,
       ],
       cwd: "/tmp",
       envs,
@@ -602,6 +637,24 @@ export async function* askLegalAgentSandboxed(
             continue;
           }
 
+          const rejected = ev as unknown as {
+            type: string;
+            name?: string;
+            reason?: string;
+            message?: string;
+          };
+          if (rejected.type === "tool_rejected") {
+            const reason =
+              rejected.reason === "duplicate" ? "duplicate" : "budget";
+            yield {
+              type: "tool_rejected",
+              name: rejected.name ?? "tool",
+              reason,
+              message: rejected.message ?? `Tool call rejected (${reason})`,
+            };
+            nl = lineBuf.indexOf("\n");
+            continue;
+          }
           switch (ev.type) {
             case "text":
               if (ev.text) {
@@ -615,8 +668,9 @@ export async function* askLegalAgentSandboxed(
                   };
                 }
                 sawText = true;
-                streamedText += ev.text;
-                yield { type: "delta", text: ev.text };
+                const text = sanitizer.push(ev.text);
+                streamedText += text;
+                if (text) yield { type: "delta", text };
               }
               break;
             case "tool_call": {
@@ -645,7 +699,7 @@ export async function* askLegalAgentSandboxed(
             }
             case "turn":
               sawTurn = true;
-              finalText = ev.text;
+              finalText = sanitizeAnswer(ev.text);
               costUsd = ev.cost_usd;
               contextTokens = ev.context_tokens;
               break;
@@ -683,6 +737,9 @@ export async function* askLegalAgentSandboxed(
     }
 
     if (signal?.aborted) return;
+    const tail = sanitizer.finish();
+    streamedText += tail;
+    if (tail) yield { type: "delta", text: tail };
     const sboxId = sid;
     // graff writes auth/model errors to STDOUT (graff.out) with exit 0 and an
     // empty stderr, so fall back through stdout for a non-blank message.

@@ -5,6 +5,8 @@ codedb.snapshot
 KURI_CREDENTIALS.md
 
 # codegraff / harness agent artifacts (session data, traces — never commit)
+/.graff/
+/.harness/
 harness.trace.jsonl
 harness.trajectory.jsonl
 last.session.json

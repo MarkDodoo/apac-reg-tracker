@@ -2,13 +2,10 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getThread } from "@/lib/ask-threads";
 import { getSession } from "@/lib/auth";
 import { stopMemoryAskRun } from "@/server/ask-run-memory";
+import { safeAgentError, userRunName } from "@/server/ask-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const useSandbox = !!(
-  process.env.CUBESANDBOX_GATEWAY_URL && process.env.CUBESANDBOX_TENANT_KEY
-);
 
 function clean(value: unknown, max = 100): string | undefined {
   return typeof value === "string" && value.trim()
@@ -40,14 +37,6 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ error: "Run not found" }, { status: 404 });
   }
 
-  if (!useSandbox) {
-    const stopped = stopMemoryAskRun(session.user.id, runId);
-    return Response.json({
-      ok: true,
-      status: stopped ? "stopped" : "not-hosted",
-    });
-  }
-
   try {
     const { env } = await getCloudflareContext({ async: true });
     const ns = (env as { ASK_RUN_DO?: DurableObjectNamespace }).ASK_RUN_DO;
@@ -59,16 +48,22 @@ export async function POST(req: Request): Promise<Response> {
       });
     }
 
-    const stub = ns.get(ns.idFromName(runId));
+    const stub = ns.get(ns.idFromName(userRunName(session.user.id, runId)));
     const res = await stub.fetch("https://ask-run-do/stop", {
       method: "POST",
+      headers: { "x-lawplain-user-id": session.user.id },
     });
     const data = await res.json().catch(() => ({ ok: res.ok }));
     return Response.json(data, { status: res.ok ? 200 : res.status });
   } catch (err) {
-    return Response.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 500 },
-    );
+    if (process.env.NODE_ENV !== "production") {
+      const stopped = stopMemoryAskRun(session.user.id, runId);
+      return Response.json({
+        ok: true,
+        status: stopped ? "stopped" : "not-hosted",
+      });
+    }
+    console.error("Ask stop failed", err);
+    return Response.json({ error: safeAgentError() }, { status: 500 });
   }
 }

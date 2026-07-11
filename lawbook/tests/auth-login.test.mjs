@@ -6,23 +6,51 @@ function read(path) {
   return readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 }
 
-test("Google OAuth is configured and preserves a safe post-auth destination", () => {
-  const auth = read("src/lib/auth.ts");
+test("Google OAuth preserves a safe post-auth destination", () => {
   const form = read("src/components/AuthForm.tsx");
-  const env = read(".env.example");
 
-  assert.match(auth, /socialProviders:/);
-  assert.match(auth, /google:/);
-  assert.match(auth, /GOOGLE_CLIENT_ID/);
-  assert.match(auth, /GOOGLE_CLIENT_SECRET/);
   assert.match(form, /authClient\.signIn\.social/);
-  assert.match(form, /provider: "google"/);
+  assert.match(form, /onSocialSignIn\("google"\)/);
   assert.match(
     form,
     /callbackURL: new URL\(next, window\.location\.origin\)\.toString\(\)/,
   );
   assert.match(form, /Continue with Google/);
-  assert.match(env, /\/api\/auth\/callback\/google/);
+  assert.match(form, /socialLoading === "google"/);
+  assert.doesNotMatch(form, /GitHub|"github"/);
+  assert.match(form, /`\$\{providerName\} sign-in failed/);
+});
+
+test("Google OAuth is enabled only by a complete credential pair", () => {
+  const auth = read("src/lib/auth.ts");
+
+  assert.match(auth, /GOOGLE_CLIENT_ID/);
+  assert.match(auth, /GOOGLE_CLIENT_SECRET/);
+  assert.match(auth, /getSocialProviderConfiguration/);
+  assert.match(auth, /GOOGLE_CLIENT_ID: googleClientId/);
+  assert.doesNotMatch(auth, /GITHUB_/);
+  assert.match(
+    auth,
+    /Object\.keys\(socialProviders\)\.length > 0 \? socialProviders : undefined/,
+  );
+});
+
+test("OAuth pages resolve provider availability at request time", () => {
+  const signIn = read("src/app/sign-in/page.tsx");
+  const signUp = read("src/app/sign-up/page.tsx");
+
+  for (const page of [signIn, signUp]) {
+    assert.match(page, /export const dynamic = "force-dynamic"/);
+    assert.match(page, /getServerSocialProviderAvailability/);
+  }
+});
+
+test("OAuth identity handling does not opt into unsafe account merging", () => {
+  const auth = read("src/lib/auth.ts");
+
+  assert.doesNotMatch(auth, /allowDifferentEmails/);
+  assert.doesNotMatch(auth, /trustedProviders/);
+  assert.doesNotMatch(auth, /accountLinking/);
 });
 
 test("sign-in checks username registration before password auth", () => {

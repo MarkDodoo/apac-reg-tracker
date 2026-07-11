@@ -1,6 +1,13 @@
 import { DurableObject } from "cloudflare:workers";
 import type { AgentEvent } from "../lib/agent";
 import { CubeSandbox } from "../lib/cubesandbox";
+import {
+  askAgentEnabled,
+  MAX_ASK_EVENT_BYTES,
+  providerCredential,
+  redactSecrets,
+  safeAgentError,
+} from "./ask-security";
 import { GraffRun } from "./graff-run";
 
 /**
@@ -19,19 +26,6 @@ interface AskRunEnv {
   [key: string]: unknown;
 }
 
-const PROVIDER_KEYS = [
-  "ANTHROPIC_API_KEY",
-  "CODEGRAFF_API_KEY",
-  "DEEPSEEK_API_KEY",
-  "OPENAI_API_KEY",
-  "MINIMAX_API_KEY",
-  "XIAOMI_API_KEY",
-  "KIMI_API_KEY",
-  "MOONSHOT_API_KEY",
-  "XAI_API_KEY",
-  "ZAI_API_KEY",
-];
-
 type RunStatus = "idle" | "running" | "done" | "error" | "stopped";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -46,6 +40,11 @@ export class AskRunDO extends DurableObject<AskRunEnv> {
 
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
+    const caller = req.headers.get("x-lawplain-user-id");
+    const owner = await this.ctx.storage.get<string>("userId");
+    if (!caller || (owner && owner !== caller)) {
+      return Response.json({ error: "Run not found" }, { status: 404 });
+    }
     if (req.method === "POST" && url.pathname.endsWith("/start")) {
       return this.handleStart(req);
     }
@@ -78,11 +77,49 @@ export class AskRunDO extends DurableObject<AskRunEnv> {
   }
 
   private appendEvents(events: AgentEvent[]): void {
-    for (const ev of events) {
+    const secrets = Object.values(providerCredential(this.env) ?? {});
+    const redact = (value: unknown): unknown => {
+      if (typeof value === "string") return redactSecrets(value, secrets);
+      if (Array.isArray(value)) return value.map(redact);
+      if (value && typeof value === "object")
+        return Object.fromEntries(
+          Object.entries(value).map(([key, item]) => [key, redact(item)]),
+        );
+      return value;
+    };
+    const insert = (event: AgentEvent) => {
+      const json = JSON.stringify(redact(event));
+      if (new TextEncoder().encode(json).length > MAX_ASK_EVENT_BYTES) {
+        // Only non-terminal metadata can reach this after delta chunking and
+        // terminal compaction; replace it visibly rather than silently dropping it.
+        return insert({ type: "error", message: safeAgentError() });
+      }
       this.ctx.storage.sql.exec(
         "INSERT INTO events (idx, json) VALUES ((SELECT COALESCE(MAX(idx), -1) + 1 FROM events), ?)",
-        JSON.stringify(ev),
+        json,
       );
+    };
+    for (const ev of events) {
+      if (ev.type === "delta") {
+        let text = ev.text;
+        while (text) {
+          // 8KB of UTF-8 remains below the 64KB event cap even when every byte
+          // needs JSON's longest six-byte escape representation.
+          const bytes = new TextEncoder().encode(text);
+          const part = new TextDecoder().decode(bytes.slice(0, 8_000), {
+            stream: bytes.length > 8_000,
+          });
+          insert({ type: "delta", text: part });
+          text = new TextDecoder().decode(
+            bytes.slice(new TextEncoder().encode(part).length),
+          );
+        }
+      } else if (ev.type === "done") {
+        // The canonical full answer is persisted in the thread transcript.
+        insert({ ...ev, text: "" });
+      } else {
+        insert(ev);
+      }
     }
   }
 
@@ -97,7 +134,12 @@ export class AskRunDO extends DurableObject<AskRunEnv> {
     } | null;
     const status = await this.status();
     if (status === "idle") {
-      if (!body?.prompt || !body.systemPrompt || !body.model) {
+      if (
+        !body?.prompt ||
+        !body.systemPrompt ||
+        !body.model ||
+        body.userId !== req.headers.get("x-lawplain-user-id")
+      ) {
         return Response.json({ error: "missing run params" }, { status: 400 });
       }
       await this.ctx.storage.put({
@@ -173,14 +215,9 @@ export class AskRunDO extends DurableObject<AskRunEnv> {
     if (!prompt || !systemPrompt || !model) {
       return this.fail("missing run params");
     }
-    const providerEnv: Record<string, string> = {};
-    for (const k of PROVIDER_KEYS) {
-      const v = this.env[k];
-      if (typeof v === "string" && v) providerEnv[k] = v;
-    }
-    if (Object.keys(providerEnv).length === 0) {
-      return this.fail("No graff provider key set");
-    }
+    if (!askAgentEnabled(this.env)) return this.fail(safeAgentError());
+    const providerEnv = providerCredential(this.env);
+    if (!providerEnv) return this.fail(safeAgentError());
 
     const sandbox = new CubeSandbox({ gatewayUrl: gw, tenantKey: key });
     const run = new GraffRun(startedAt);
@@ -215,9 +252,11 @@ export class AskRunDO extends DurableObject<AskRunEnv> {
       }
     } catch (e) {
       if (await this.isStopped()) return;
-      this.appendEvents([
-        { type: "error", message: e instanceof Error ? e.message : String(e) },
-      ]);
+      console.error(
+        "Ask run failed",
+        redactSecrets(e, Object.values(providerEnv)),
+      );
+      this.appendEvents([{ type: "error", message: safeAgentError() }]);
       await this.ctx.storage.put("status", "error" satisfies RunStatus);
       await this.updateThreadStatus("error");
     } finally {
@@ -271,6 +310,7 @@ export class AskRunDO extends DurableObject<AskRunEnv> {
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         let cursor = from;
+        let lastEventAt = Date.now();
         try {
           while (true) {
             const rows = ctx.storage.sql
@@ -282,6 +322,7 @@ export class AskRunDO extends DurableObject<AskRunEnv> {
             for (const r of rows) {
               controller.enqueue(encoder.encode(`data: ${r.json}\n\n`));
               cursor = Number(r.idx) + 1;
+              lastEventAt = Date.now();
             }
             const s = await status();
             if (s === "done" || s === "error" || s === "stopped") {
@@ -290,6 +331,14 @@ export class AskRunDO extends DurableObject<AskRunEnv> {
                 .one();
               if (Number(more.c) === 0) break;
               continue;
+            }
+            if (Date.now() - lastEventAt > 330_000) {
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({ type: "error", message: safeAgentError() })}\n\n`,
+                ),
+              );
+              break;
             }
             await sleep(400);
           }

@@ -34,15 +34,15 @@ import {
   startMemoryAskRun,
   streamMemoryAskRun,
 } from "@/server/ask-run-memory";
+import {
+  askAgentEnabled,
+  safeAgentError,
+  userRunName,
+} from "@/server/ask-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
-
-/** Use CubeSandbox when configured; fall back to local graff subprocess. */
-const useSandbox = !!(
-  process.env.CUBESANDBOX_GATEWAY_URL && process.env.CUBESANDBOX_TENANT_KEY
-);
 
 const SSE_HEADERS = {
   "content-type": "text/event-stream; charset=utf-8",
@@ -79,6 +79,21 @@ export async function POST(req: Request): Promise<Response> {
       headers: { "content-type": "application/json" },
     });
   }
+  let runtimeEnv: Record<string, unknown> = { ...process.env };
+  let askRuns: DurableObjectNamespace | undefined;
+  try {
+    const { env } = await getCloudflareContext({ async: true });
+    runtimeEnv = { ...runtimeEnv, ...(env as Record<string, unknown>) };
+    askRuns = (env as { ASK_RUN_DO?: DurableObjectNamespace }).ASK_RUN_DO;
+  } catch {
+    // next dev/start has no Cloudflare context and intentionally uses process.env.
+  }
+  if (!askAgentEnabled(runtimeEnv))
+    return errorStream("Ask is not currently available.");
+  const production = runtimeEnv.NODE_ENV === "production";
+  const useSandbox = !!(
+    runtimeEnv.CUBESANDBOX_GATEWAY_URL && runtimeEnv.CUBESANDBOX_TENANT_KEY
+  );
 
   let question = "";
   let cite: string | undefined;
@@ -197,29 +212,43 @@ export async function POST(req: Request): Promise<Response> {
     }
   }
 
+  if (production && (!useSandbox || !askRuns || !runId)) {
+    console.error("Production Ask requires CubeSandbox, ASK_RUN_DO, and runId");
+    return errorStream(safeAgentError());
+  }
+
   // DO mode — host the run in AskRunDO so it survives navigation.
-  if (useSandbox && runId) {
+  if (useSandbox && askRuns && runId) {
     try {
-      const { env } = await getCloudflareContext({ async: true });
-      const ns = (env as { ASK_RUN_DO?: DurableObjectNamespace }).ASK_RUN_DO;
-      if (ns) {
-        const stub = ns.get(ns.idFromName(runId));
-        const prompt = composePrompt(question, context, history);
-        await stub.fetch("https://ask-run-do/start", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            prompt,
-            systemPrompt: legalResearchPrompt(),
-            model: AGENT_MODEL,
-            userId: session.user.id,
-            threadId,
-          }),
-        });
-        return stub.fetch(`https://ask-run-do/stream?from=${from}`);
+      const stub = askRuns.get(
+        askRuns.idFromName(userRunName(session.user.id, runId)),
+      );
+      const prompt = composePrompt(question, context, history);
+      const ownerHeaders = {
+        "content-type": "application/json",
+        "x-lawplain-user-id": session.user.id,
+      };
+      const started = await stub.fetch("https://ask-run-do/start", {
+        method: "POST",
+        headers: ownerHeaders,
+        body: JSON.stringify({
+          prompt,
+          systemPrompt: legalResearchPrompt(),
+          model: AGENT_MODEL,
+          userId: session.user.id,
+          threadId,
+        }),
+      });
+      if (!started.ok) {
+        console.error("Ask durable start rejected", started.status);
+        return errorStream(safeAgentError());
       }
+      return stub.fetch(`https://ask-run-do/stream?from=${from}`, {
+        headers: { "x-lawplain-user-id": session.user.id },
+      });
     } catch (err) {
-      return errorStream(err instanceof Error ? err.message : String(err));
+      console.error("Ask durable run failed", err);
+      return errorStream(safeAgentError());
     }
   }
 

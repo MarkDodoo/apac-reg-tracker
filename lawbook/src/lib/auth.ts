@@ -2,6 +2,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { betterAuth } from "better-auth";
 import { username } from "better-auth/plugins/username";
 import { getAuthDb } from "@/lib/d1";
+import { getSocialProviderConfiguration } from "@/lib/social-providers";
 
 interface AuthVars extends CloudflareEnv {
   BETTER_AUTH_SECRET?: string;
@@ -49,6 +50,10 @@ export async function getAuth() {
     authVars.GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID;
   const googleClientSecret =
     authVars.GOOGLE_CLIENT_SECRET ?? process.env.GOOGLE_CLIENT_SECRET;
+  const socialProviders = getSocialProviderConfiguration({
+    GOOGLE_CLIENT_ID: googleClientId,
+    GOOGLE_CLIENT_SECRET: googleClientSecret,
+  });
 
   return betterAuth({
     appName: "Lawplain",
@@ -64,14 +69,7 @@ export async function getAuth() {
       requireEmailVerification: false,
     },
     socialProviders:
-      googleClientId && googleClientSecret
-        ? {
-            google: {
-              clientId: googleClientId,
-              clientSecret: googleClientSecret,
-            },
-          }
-        : undefined,
+      Object.keys(socialProviders).length > 0 ? socialProviders : undefined,
     plugins: [username()],
   });
 }

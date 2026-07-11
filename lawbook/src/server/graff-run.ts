@@ -12,7 +12,14 @@
  * agent.ts's runtime.
  */
 import type { AgentEvent } from "../lib/agent";
+import { normalizeToolRejected } from "../lib/agent-event-normalizer";
 import { type CubeSandbox, GRAFF_BIN_PATH } from "../lib/cubesandbox";
+import { ReasoningSanitizer, sanitizeAnswer } from "../lib/reasoning-sanitizer";
+import {
+  boundedText,
+  MAX_ASK_TEXT_BYTES,
+  safeAgentError,
+} from "./ask-security";
 
 const BASE = "https://backend.lawplain.com";
 
@@ -20,6 +27,12 @@ const BASE = "https://backend.lawplain.com";
 type GraffEvent =
   | { type: "reasoning" | "text"; text?: string }
   | { type: "tool_call"; name: string; input?: unknown }
+  | {
+      type: "tool_rejected";
+      name: string;
+      reason: "budget" | "duplicate";
+      message?: string;
+    }
   | { type: "turn"; text: string; cost_usd: number; context_tokens: number }
   | { type: "error"; message: string };
 
@@ -122,6 +135,7 @@ export class GraffRun {
   private lineBuf = "";
   private rawNonJson = "";
   private streamedText = "";
+  private sanitizer = new ReasoningSanitizer();
   private sawTurn = false;
   private sawText = false;
   private announcedAnswering = false;
@@ -185,7 +199,7 @@ export class GraffRun {
       cmd: "/bin/bash",
       args: [
         "-c",
-        `rm -f /tmp/graff.out /tmp/graff.err /tmp/graff.exit /tmp/graff.launch; nohup /bin/bash -lc 'printf %s "$PROMPT_JSON" | "$GRAFF_BIN" --json --yolo --no-telemetry --model "$MODEL" --system-prompt "$SYSTEM_PROMPT" > /tmp/graff.out 2> /tmp/graff.err; echo $? > /tmp/graff.exit' > /tmp/graff.launch 2>&1 < /dev/null & echo $!`,
+        `rm -f /tmp/graff.out /tmp/graff.err /tmp/graff.exit /tmp/graff.launch; nohup /bin/bash -lc 'printf %s "$PROMPT_JSON" | "$GRAFF_BIN" --json --yolo --no-telemetry --max-tool-calls 6 --dedupe-tool-calls --model "$MODEL" --system-prompt "$SYSTEM_PROMPT" > /tmp/graff.out 2> /tmp/graff.err; echo $? > /tmp/graff.exit' > /tmp/graff.launch 2>&1 < /dev/null & echo $!`,
       ],
       cwd: "/tmp",
       envs,
@@ -215,7 +229,13 @@ export class GraffRun {
     if (!sid) return [];
     const events: AgentEvent[] = [];
 
-    const out = (await sandbox.readSandboxFile(sid, "/tmp/graff.out")) ?? "";
+    const rawOut = (await sandbox.readSandboxFile(sid, "/tmp/graff.out")) ?? "";
+    const boundedOut = boundedText(rawOut, MAX_ASK_TEXT_BYTES);
+    const out = boundedOut.text;
+    if (boundedOut.truncated && this.offset >= out.length) {
+      this.done = true;
+      return [{ type: "error", message: safeAgentError() }];
+    }
     if (out.length > this.offset) {
       this.lineBuf += out.slice(this.offset);
       this.offset = out.length;
@@ -251,8 +271,20 @@ export class GraffRun {
                 });
               }
               this.sawText = true;
-              this.streamedText += ev.text;
-              events.push({ type: "delta", text: ev.text });
+              const remaining =
+                MAX_ASK_TEXT_BYTES -
+                new TextEncoder().encode(this.streamedText).length;
+              const clean = this.sanitizer.push(ev.text);
+              const text = boundedText(clean, Math.max(0, remaining));
+              this.streamedText += text.text;
+              if (text.text) events.push({ type: "delta", text: text.text });
+              if (text.truncated) {
+                this.done = true;
+                return [
+                  ...events,
+                  { type: "error", message: safeAgentError() },
+                ];
+              }
             }
             break;
           case "tool_call": {
@@ -279,9 +311,12 @@ export class GraffRun {
             });
             break;
           }
+          case "tool_rejected":
+            events.push(normalizeToolRejected(ev));
+            break;
           case "turn":
             this.sawTurn = true;
-            this.finalText = ev.text;
+            this.finalText = sanitizeAnswer(ev.text);
             this.costUsd = ev.cost_usd;
             this.contextTokens = ev.context_tokens;
             break;
@@ -341,9 +376,15 @@ export class GraffRun {
         ).trim()
       ).slice(0, 800);
 
+    const tail = this.sanitizer.finish();
+    this.streamedText += tail;
+    const tailEvents: AgentEvent[] = tail
+      ? [{ type: "delta", text: tail }]
+      : [];
     if (exitCode && exitCode !== 0) {
       const diag = await failureDiag();
       return [
+        ...tailEvents,
         {
           type: "error",
           message: diag
@@ -357,6 +398,7 @@ export class GraffRun {
     } else if (!this.sawTurn) {
       const diag = await failureDiag();
       return [
+        ...tailEvents,
         {
           type: "error",
           message: diag
@@ -366,6 +408,7 @@ export class GraffRun {
       ];
     }
     return [
+      ...tailEvents,
       {
         type: "done",
         text: this.finalText,

@@ -52,6 +52,12 @@ type ChatEvent =
       duplicate?: boolean;
       count?: number;
     }
+  | {
+      type: "tool_rejected";
+      name: string;
+      reason: "budget" | "duplicate";
+      message: string;
+    }
   | { type: "done"; text: string; costUsd: number; contextTokens: number }
   | { type: "error"; message: string };
 
@@ -1711,6 +1717,18 @@ export function AskAgent({
                 });
                 break;
               }
+              case "tool_rejected":
+                patch((m) => ({
+                  ...m,
+                  progress: [
+                    ...m.progress,
+                    {
+                      id: toolId.current++,
+                      message: ev.message,
+                    },
+                  ].slice(-6),
+                }));
+                break;
               case "done": {
                 queueingOpenRef.current = false;
                 const finalSnapshot = runSnapshot.map((m) =>
@@ -1811,7 +1829,7 @@ export function AskAgent({
           patch((m) => ({
             ...m,
             phase: "error",
-            error: err instanceof Error ? err.message : String(err),
+            error: "Research could not be completed. Please try again.",
           }));
         }
       } finally {

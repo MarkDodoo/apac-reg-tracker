@@ -85,12 +85,43 @@ The route handler spawns the `graff` binary as a subprocess, so:
    ```
    Binary not on PATH? `export LAWGRAFF_BINARY=/path/to/graff`.
 
-Then `npm run dev` and use the **Ask Lawplain** box. With no key configured the
-route returns an `error` event explaining the model is unavailable.
+4. **Enable Ask explicitly** in `.env.local` (it is fail-closed when omitted):
+   ```bash
+   LAWPLAIN_ASK_AGENT_ENABLED=true
+   LAWPLAIN_PUBLIC_HOST=localhost
+   LAWPLAIN_AGENT_CREDENTIAL=CODEGRAFF_API_KEY
+   CODEGRAFF_API_KEY=...
+   ```
+   `LAWPLAIN_AGENT_CREDENTIAL` selects exactly one credential variable to pass
+   to the agent; it defaults to `CODEGRAFF_API_KEY`. Do not configure it with a
+   list of keys.
+
+Then `npm run dev` and use the **Ask Lawplain** box. Without explicit enablement
+or the selected credential, Ask reports that it is unavailable. The local
+fallback runs `graff --yolo` on the developer machine and is intended only for
+a trusted development environment. Configure `CUBESANDBOX_GATEWAY_URL` and
+`CUBESANDBOX_TENANT_KEY` to exercise the isolated path; production always uses
+CubeSandbox rather than treating the Worker host as a trusted shell.
+
+Production Ask runs in CubeSandbox with CodeGraff `v0.0.200`, pinned at
+SHA-256 `3fefe2bc01edd64f4974e0c9a529cab0b7ebd0cb0da5ef2e30c4d256d1856351`
+and verified before extraction. Runs have a five-minute deadline, at most six
+tool calls (with duplicate calls rejected), a 1 MB captured stdout limit and a
+1 MB captured stderr limit; persisted event payloads are additionally bounded.
+The local SDK path passes the same tool controls through its supported raw
+`args` option, but production remains on the controlled sandbox path. The
+default model remains `glm-5.2`; no paid benchmark was run to justify changing
+it.
+
+A fixed, secret-free benchmark fixture is available via `npm run benchmark:ask`.
+It refuses to run unless both `LAWPLAIN_BENCHMARK_URL` and
+`LAWPLAIN_BENCHMARK_RUN=yes` are set, and writes one JSONL metrics record to
+stdout. Authentication, if required by the target, must be provided by the
+operator's environment/network setup; the script does not print credentials.
 
 ## Authentication and D1 setup
 
-Lawplain uses [Better Auth](https://www.better-auth.com/) for username/password accounts and Google OAuth. Auth data is stored in a Cloudflare D1 database bound as `AUTH_DB`.
+Lawplain uses [Better Auth](https://www.better-auth.com/) for username/password accounts plus Google OAuth. Auth data is stored in a Cloudflare D1 database bound as `AUTH_DB`.
 
 1. Generate a Better Auth secret:
    ```bash
@@ -121,15 +152,23 @@ Lawplain uses [Better Auth](https://www.better-auth.com/) for username/password 
    bun run dev
    ```
 
-For Cloudflare production, keep the client secret and auth secret out of `wrangler.jsonc`:
+For Cloudflare production, keep credentials out of `wrangler.jsonc` and set
+them as Worker secrets:
 
 ```bash
 bunx wrangler secret put BETTER_AUTH_SECRET
 bunx wrangler secret put GOOGLE_CLIENT_ID
 bunx wrangler secret put GOOGLE_CLIENT_SECRET
+bunx wrangler secret put CODEGRAFF_API_KEY
+bunx wrangler secret put CUBESANDBOX_GATEWAY_URL
+bunx wrangler secret put CUBESANDBOX_TENANT_KEY
 ```
 
-`BETTER_AUTH_URL` is already set to `https://lawplain.com` in `wrangler.jsonc`; it must match the origin used by the production Google callback URL.
+`wrangler.jsonc` deliberately sets the non-secret production controls
+`LAWPLAIN_ASK_AGENT_ENABLED=true`, `LAWPLAIN_PUBLIC_HOST=lawplain.com`, and
+`LAWPLAIN_AGENT_CREDENTIAL=CODEGRAFF_API_KEY`; retain them when deploying or Ask
+will fail closed. `BETTER_AUTH_URL` is also set to `https://lawplain.com` and
+must match the origin used by the production Google OAuth callback URL.
 
 Account routes:
 
@@ -137,17 +176,24 @@ Account routes:
 - `/sign-in` — sign in with username/password.
 - `/api/auth/*` — Better Auth handler.
 
-`/api/ask` now requires an authenticated session before it starts the long-running agent workflow.
+`/api/ask` requires an authenticated session before it starts the long-running agent workflow.
+
+## Saved research and Quotes
+
+`/saved` is the canonical signed-in workspace for saved documents, search
+history, Ask answers, and Quotes. Quotes are intentionally narrow, durable
+excerpts from judgments and statutes only; they are not a general-purpose
+highlighting or annotation suite.
 
 ### Notes & caveats
 
 - **`yolo: true` is required** — without it the agent's `bash` (the `curl`
   calls) is blocked at the permission gate, since the JSON protocol has no human
-  to approve. The agent runs in an **isolated temp cwd** so it cannot touch the
-  project source, and `GRAFF_NO_TELEMETRY=1` keeps the SDK's outbound fleet
-  telemetry off. Treat the yolo bash surface as you would any server-side code
-  execution: don't expose `/api/ask` unauthenticated on a public host without
-  rate-limiting and your own review of the system prompt in `src/lib/agent.ts`.
+  to approve. Production contains that shell in a disposable CubeSandbox VM;
+  the local fallback uses an isolated temporary working directory but still
+  executes on the trusted developer machine. Telemetry is disabled. Treat any
+  local yolo shell as server-side code execution and review the system prompt
+  in `src/lib/agent.ts`.
 - **Latency.** A turn is several LLM round trips plus `curl`s, so it's slower
   than the keyword search above it — expect ~20–60s. The UI streams text and
   shows each search as a chip while it works.
