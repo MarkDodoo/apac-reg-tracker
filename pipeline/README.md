@@ -41,5 +41,5 @@ Then browse http://localhost:8000/docs (interactive Swagger UI).
 |---|---|---|
 | HKMA press releases | Official Open API | ✅ |
 | HKMA circulars/guidelines | HTML scraper (API doesn't expose them) | planned |
-| MAS | RSS + scraper | planned |
+| MAS media releases | Sitemap + HTML scraper (no RSS/API exists) | ✅ |
 | ASIC | RSS + data.gov.au | planned |

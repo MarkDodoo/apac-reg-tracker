@@ -1,10 +1,13 @@
 """Ingestion runner: scrape sources and upsert into the regulations table.
 
 Usage (from pipeline/):
-    python -m app.ingest                # metadata for latest 50 HKMA releases
-    python -m app.ingest --max 200      # more history
-    python -m app.ingest --full-text 20 # also fetch article text for 20 newest
+    python -m app.ingest                     # all sources, default limits
+    python -m app.ingest --source mas        # one source only
+    python -m app.ingest --max 200           # more history per source
+    python -m app.ingest --full-text 20      # backfill article text (HKMA)
 
+MAS pages include full text at scrape time (each page must be fetched for its
+date anyway, at a polite 2s crawl delay — keep --max modest for MAS).
 Commits after every record so a mid-run failure keeps everything scraped so far.
 """
 
@@ -16,7 +19,7 @@ from sqlalchemy import select
 
 from app.db import SessionLocal, init_db
 from app.models import Regulation
-from app.scrapers import hkma
+from app.scrapers import hkma, mas
 
 
 def ingest_hkma(max_records: int) -> tuple[int, int]:
@@ -35,6 +38,24 @@ def ingest_hkma(max_records: int) -> tuple[int, int]:
             session.commit()  # per-record: partial progress survives errors
             new += 1
     return new, existing
+
+
+def ingest_mas(max_records: int) -> tuple[int, int]:
+    """Scrape new MAS media releases (full text included). Returns (new, seen)."""
+    with SessionLocal() as session:
+        known = set(
+            session.scalars(
+                select(Regulation.source_url).where(Regulation.source == mas.SOURCE)
+            )
+        )
+    records = mas.fetch_media_releases(max_records=max_records, skip_urls=known)
+    new = 0
+    with SessionLocal() as session:
+        for rec in records:
+            session.add(Regulation(**rec))
+            session.commit()  # per-record: partial progress survives errors
+            new += 1
+    return new, len(known)
 
 
 def backfill_full_text(limit: int) -> int:
@@ -61,19 +82,33 @@ def backfill_full_text(limit: int) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Ingest regulatory documents")
-    parser.add_argument("--max", type=int, default=50, help="max records per source")
+    parser.add_argument(
+        "--source",
+        choices=["all", "hkma", "mas"],
+        default="all",
+        help="which regulator to ingest (default: all)",
+    )
+    parser.add_argument(
+        "--max", type=int, default=None, help="max records per source"
+    )
     parser.add_argument(
         "--full-text",
         type=int,
         default=0,
         metavar="N",
-        help="also fetch article text for N newest records missing it",
+        help="also fetch article text for N newest HKMA records missing it",
     )
     args = parser.parse_args()
 
     init_db()
-    new, existing = ingest_hkma(args.max)
-    print(f"HKMA press releases: {new} new, {existing} already ingested")
+    if args.source in ("all", "hkma"):
+        new, existing = ingest_hkma(args.max or 50)
+        print(f"HKMA press releases: {new} new, {existing} already ingested")
+
+    if args.source in ("all", "mas"):
+        # MAS fetches every article page at a 2s crawl delay — default small.
+        new, existing = ingest_mas(args.max or 15)
+        print(f"MAS media releases: {new} new ({existing} known before this run)")
 
     if args.full_text:
         fetched = backfill_full_text(args.full_text)

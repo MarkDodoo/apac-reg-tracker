@@ -17,7 +17,7 @@ A living record of everything done on this project: decisions made, work complet
 | Fork lawplain, clone locally | ✅ Done |
 | Run the app locally, verify search works | ✅ Done (2026-07-13) |
 | Python data pipeline skeleton (FastAPI) | ✅ Done (2026-07-13) |
-| Scrapers: MAS, HKMA, ASIC | 🔄 HKMA done; MAS, ASIC next |
+| Scrapers: MAS, HKMA, ASIC | 🔄 HKMA + MAS done; ASIC next |
 | Database storage for regulations | ✅ SQLite dev DB (Postgres-ready via SQLAlchemy) |
 | Sentiment scoring (FinBERT vs LLM bake-off) | ⬜ Not started |
 | Basic dashboard of ingested docs | ⬜ Not started |
@@ -47,6 +47,21 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 ---
 
 ## Session Log
+
+### 2026-07-14 — Session 3: MAS scraper
+
+**Done:**
+- Built the MAS scraper (`app/scrapers/mas.py`). MAS has **no RSS and no usable news API** (probed: `/rss*` all 404; the site's own search API returns a maintenance page to non-browser clients). Approach that works:
+  - `sitemap.xml` lists ~1,816 media releases (plus ~1,472 regulation docs — future source) with the year in each URL.
+  - Article pages are server-rendered: title from `og:title`, date from the "Published Date:" line, body from `mas-rte-content` blocks.
+  - **Gotcha for future scrapers:** the MAS WAF blocks requests unless they look like a real browser — the `Accept` header matters, not just User-Agent.
+  - Respects the 2s crawl delay from robots.txt; skips already-ingested URLs so the crawl budget goes to new documents.
+- Refactored `app/ingest.py` for multiple sources: `--source all|hkma|mas`.
+- **Verified end-to-end:** 12 MAS releases ingested with full text (~64k chars), dates parsed; corpus now 72 docs across 2 jurisdictions; cross-source search working (e.g. "monetary policy" → 4 MAS hits).
+
+**Next up:**
+- Ollama enrichment pass: qwen2.5:3b category tagging + sentiment, qwen3:4b summaries → fill the `null` columns.
+- ASIC scraper after that.
 
 ### 2026-07-13 — Session 2: Python pipeline + first scraper (HKMA)
 
