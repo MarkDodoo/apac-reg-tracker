@@ -16,9 +16,9 @@ A living record of everything done on this project: decisions made, work complet
 |---|---|
 | Fork lawplain, clone locally | ✅ Done |
 | Run the app locally, verify search works | ✅ Done (2026-07-13) |
-| Python data pipeline skeleton (FastAPI) | ⬜ Not started |
-| Scrapers: MAS, HKMA, ASIC | ⬜ Not started |
-| PostgreSQL storage for regulations | ⬜ Not started |
+| Python data pipeline skeleton (FastAPI) | ✅ Done (2026-07-13) |
+| Scrapers: MAS, HKMA, ASIC | 🔄 HKMA done; MAS, ASIC next |
+| Database storage for regulations | ✅ SQLite dev DB (Postgres-ready via SQLAlchemy) |
 | Sentiment scoring (FinBERT vs LLM bake-off) | ⬜ Not started |
 | Basic dashboard of ingested docs | ⬜ Not started |
 
@@ -34,6 +34,7 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 | 2 | 2026-07-13 | **Our FastAPI backend replaces backend.lawplain.com entirely.** | The lawplain corpus is NOT in the repo — all search hits the original author's hosted API (`src/lib/sgjudge.ts`). Our backend will serve similar-shaped endpoints (e.g. `/v1/regulations/search`) so the frontend patterns transfer over. |
 | 3 | 2026-07-13 | **Deployment: keep Next.js on Cloudflare (free), host FastAPI separately (Render/Hetzner).** Tentative — revisit at Phase 4. | The repo is built for Cloudflare Workers (D1 auth, Durable Objects). Python can't run on Workers. Splitting the two is the least rework. |
 | 4 | 2026-07-13 | **Deployed demo serves precomputed summaries/sentiment; live LLM Q&A demoed locally.** | A €4 VPS can't run qwen3:4b at usable speed. Overnight local batches → push results to the hosted DB. |
+| 5 | 2026-07-13 | **SQLite for dev, via SQLAlchemy with portable column types (JSON, not ARRAY).** | Zero-install local dev; switching to Supabase Postgres later is just setting `DATABASE_URL`. The brief's Postgres schema is preserved field-for-field in `pipeline/app/models.py`. |
 
 ---
 
@@ -46,6 +47,25 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 ---
 
 ## Session Log
+
+### 2026-07-13 — Session 2: Python pipeline + first scraper (HKMA)
+
+**Done:**
+- Built the `pipeline/` backend from scratch (see [pipeline/README.md](pipeline/README.md) for usage):
+  - SQLAlchemy model mirroring the unified schema from the brief (`app/models.py`), SQLite dev DB in `pipeline/data/` (gitignored) → Decision #5.
+  - HKMA scraper (`app/scrapers/hkma.py`) using the official Open API for press releases, plus BeautifulSoup full-text extraction from article pages.
+  - Ingestion runner (`app/ingest.py`) — upserts by `source_url`, commits per record so partial progress survives errors, polite 1s delay on page fetches.
+  - FastAPI app (`app/main.py`) with `/v1/regulations` (list/filter), `/v1/regulations/search` (keyword), `/v1/stats` — endpoint shapes mirror the lawplain backend style so the frontend transfers easily.
+- **Verified end-to-end:** ingested 60 real HKMA press releases (5 with full text); search for "fraud" returns 3 correct hits via the API.
+
+**Notes / limitations:**
+- HKMA Open API only exposes press releases — circulars/guidelines will need an HTML scraper (probed `circulars`, `guidelines`, `consultations`, `speeches`: all 404).
+- Search is keyword LIKE for now; ChromaDB semantic search is Phase 2.
+- API docs UI at http://localhost:8000/docs when running.
+
+**Next up:**
+- MAS scraper (RSS), then ASIC.
+- First Ollama pass: qwen2.5:3b category tagging + qwen3:4b summaries on ingested docs.
 
 ### 2026-07-13 — Session 1: Repo assessment + local setup
 
