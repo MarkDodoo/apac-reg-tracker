@@ -19,7 +19,8 @@ A living record of everything done on this project: decisions made, work complet
 | Python data pipeline skeleton (FastAPI) | ✅ Done (2026-07-13) |
 | Scrapers: MAS, HKMA, ASIC | 🔄 HKMA + MAS done; ASIC next |
 | Database storage for regulations | ✅ SQLite dev DB (Postgres-ready via SQLAlchemy) |
-| Sentiment scoring (FinBERT vs LLM bake-off) | ⬜ Not started |
+| Sentiment scoring (FinBERT vs LLM bake-off) | 🔄 LLM side done (qwen2.5:7b); FinBERT comparison pending |
+| LLM summaries + category tagging | ✅ Done (2026-07-14) — full corpus enriched |
 | Basic dashboard of ingested docs | ⬜ Not started |
 
 ---
@@ -35,6 +36,7 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 | 3 | 2026-07-13 | **Deployment: keep Next.js on Cloudflare (free), host FastAPI separately (Render/Hetzner).** Tentative — revisit at Phase 4. | The repo is built for Cloudflare Workers (D1 auth, Durable Objects). Python can't run on Workers. Splitting the two is the least rework. |
 | 4 | 2026-07-13 | **Deployed demo serves precomputed summaries/sentiment; live LLM Q&A demoed locally.** | A €4 VPS can't run qwen3:4b at usable speed. Overnight local batches → push results to the hosted DB. |
 | 5 | 2026-07-13 | **SQLite for dev, via SQLAlchemy with portable column types (JSON, not ARRAY).** | Zero-install local dev; switching to Supabase Postgres later is just setting `DATABASE_URL`. The brief's Postgres schema is preserved field-for-field in `pipeline/app/models.py`. |
+| 6 | 2026-07-14 | **Batch enrichment uses qwen2.5:7b for both tagging and summaries**, not the brief's 3b/qwen3:4b split. | Measured: qwen3:4b leaks reasoning text into summaries (think=False ineffective on Ollama 0.30.10); qwen2.5:3b mislabelled 2/3 scam alerts Restrictive/High vs 7b's 3/3 Neutral/Low. 3b stays as the candidate for future *real-time* tagging; models overridable via `TAG_MODEL`/`SUMMARY_MODEL` env vars. |
 
 ---
 
@@ -47,6 +49,23 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 ---
 
 ## Session Log
+
+### 2026-07-14 — Session 4: LLM enrichment layer (Ollama)
+
+**Done:**
+- Backfilled full text for all remaining HKMA docs — corpus is now 72/72 with body text.
+- Built `app/enrich.py`: category tagging, affected entities, Restrictive/Neutral/Facilitative sentiment (with score), impact level (qwen2.5:7b + JSON-schema structured output), and 2–3 sentence summaries. Two-pass design so Ollama never swaps models mid-run; per-document commits; `--limit`/`--redo` flags.
+- **Enriched the full corpus: 72/72 documents, 0 failures, 61 min** on local hardware.
+- Model findings → Decision #6 (7b over 3b/qwen3:4b for batch, with measurements).
+- Prompt design notes: scam/consumer alerts must be explicitly called out as Neutral/Low or small models mark them Restrictive; fixed category/entity taxonomies enforced via JSON schema enums.
+- `/v1/stats` now reports an `enriched` count.
+
+**Resulting corpus profile:** 62 Neutral / 8 Facilitative / 2 Restrictive; top categories Banking (65), Consumer Protection (27), Monetary Policy (22). High-impact items are genuinely significant (e.g. HKMA fixed-income measures with PBoC, MAS dual-listing framework amendments).
+
+**Next up:**
+- Dashboard (Streamlit or simple Next.js page) showing the enriched corpus — completes Phase 1.
+- FinBERT side of the sentiment bake-off (needs torch/transformers install).
+- ASIC scraper.
 
 ### 2026-07-14 — Session 3: MAS scraper
 

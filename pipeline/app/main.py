@@ -130,8 +130,17 @@ def stats() -> dict:
             )
             or 0
         )
+        enriched = (
+            session.scalar(
+                select(func.count(Regulation.id)).where(
+                    Regulation.sentiment_label.is_not(None)
+                )
+            )
+            or 0
+        )
         return {
             "total": total,
             "with_full_text": with_text,
+            "enriched": enriched,
             "by_source": {source: count for source, count in by_source},
         }
