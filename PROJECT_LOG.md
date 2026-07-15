@@ -10,7 +10,7 @@ A living record of everything done on this project: decisions made, work complet
 
 ## Current Status
 
-**Phase 1 — Foundation (in progress)**
+**Phase 1 — Foundation: ✅ COMPLETE (2026-07-15, ~2 weeks ahead of the week-4 target)** — except the ASIC scraper and FinBERT bake-off, tracked below.
 
 | Milestone | Status |
 |---|---|
@@ -21,7 +21,7 @@ A living record of everything done on this project: decisions made, work complet
 | Database storage for regulations | ✅ SQLite dev DB (Postgres-ready via SQLAlchemy) |
 | Sentiment scoring (FinBERT vs LLM bake-off) | 🔄 LLM side done (qwen2.5:7b); FinBERT comparison pending |
 | LLM summaries + category tagging | ✅ Done (2026-07-14) — full corpus enriched |
-| Basic dashboard of ingested docs | ⬜ Not started |
+| Basic dashboard of ingested docs | ✅ Done (2026-07-15) — Streamlit, `pipeline/dashboard.py` |
 
 ---
 
@@ -49,6 +49,18 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 ---
 
 ## Session Log
+
+### 2026-07-15 — Session 5: Streamlit dashboard — Phase 1 complete
+
+**Done:**
+- Built `pipeline/dashboard.py` (Streamlit + Altair): stat tiles, filter row (source / sentiment / impact / category / text search), three charts (documents over time, sentiment distribution, top categories), and a full document table with summaries and source links.
+- Sentiment uses a **diverging color encoding** — Facilitative blue / Neutral gray / Restrictive red — with the pole colors CVD-validated for both light and dark mode (deliberately avoided the red/green colorblind trap).
+- Run with: `cd pipeline && .venv\Scripts\streamlit run dashboard.py` → http://localhost:8501
+- **Phase 1 of the roadmap is complete** (bar ASIC + FinBERT bake-off, deliberately deferred): fork verified, pipeline built, 2 regulators ingested (72 docs), LLM sentiment scoring, dashboard.
+
+**Next up (Phase 2 — Intelligence layer):**
+- ChromaDB vector store + RAG-powered Q&A (the lawplain "Ask" replacement).
+- ASIC scraper; FinBERT bake-off; APScheduler for automated daily ingestion.
 
 ### 2026-07-14 — Session 4: LLM enrichment layer (Ollama)
 

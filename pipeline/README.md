@@ -29,6 +29,15 @@ Set `DATABASE_URL` to a Postgres URL to use Supabase instead.
 
 Then browse http://localhost:8000/docs (interactive Swagger UI).
 
+## Run the dashboard
+
+```bash
+.venv\Scripts\streamlit run dashboard.py
+```
+
+Opens at http://localhost:8501 — stat tiles, sentiment/category/timeline
+charts, and a filterable document table over the enriched corpus.
+
 | Endpoint | Purpose |
 |---|---|
 | `GET /v1/regulations?source=HKMA&limit=20` | Newest documents, filterable |

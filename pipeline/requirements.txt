@@ -4,3 +4,6 @@ sqlalchemy
 httpx
 beautifulsoup4
 ollama
+streamlit
+pandas
+altair
