@@ -50,6 +50,19 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 
 ## Session Log
 
+### 2026-07-15 — Session 6: ChromaDB + RAG Q&A (Phase 2 begins)
+
+**Done:**
+- `app/embed.py`: vector index over the corpus (ChromaDB persistent client, `pipeline/data/chroma/`, cosine space). Embeds **title + LLM summary** per document — dense and short, which suits the default all-MiniLM-L6-v2 embedder's ~256-token window better than raw article text. All 72 docs indexed; `embedding_id` tracked in the DB so only new docs get embedded on re-runs.
+- `app/rag.py`: the lawplain "Ask" replacement (Decision #1 executed) — retrieve top-k from ChromaDB, answer with qwen2.5:7b from numbered sources only, citations inline, explicit "don't invent regulations" guardrails.
+- Two new API endpoints: `GET /v1/regulations/semantic-search` and `GET /v1/ask`.
+- **Verified end-to-end:** semantic search finds DLT/digital-bond docs for "rules for digital asset companies" (zero keyword overlap); `/v1/ask` on "what are regulators doing about DLT and digital assets?" produced a grounded, correctly-cited answer from 5 HKMA sources.
+- Pipeline order documented: ingest → enrich → embed (embedding uses the summary, so enrich must run first).
+
+**Next up:**
+- Wire `/v1/ask` into the Next.js frontend (replace the graff agent call, keep the SSE streaming UI).
+- ASIC scraper; APScheduler for automated daily ingestion; FinBERT bake-off.
+
 ### 2026-07-15 — Session 5: Streamlit dashboard — Phase 1 complete
 
 **Done:**

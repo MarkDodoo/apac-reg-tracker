@@ -112,6 +112,76 @@ def search_regulations(
         )
 
 
+class SemanticHit(BaseModel):
+    id: str
+    title: str
+    source: str
+    url: str
+    published_date: str
+    sentiment_label: str
+    impact_level: str
+    relevance: float
+
+
+class SemanticResponse(BaseModel):
+    query: str
+    results: list[SemanticHit]
+
+
+@app.get("/v1/regulations/semantic-search", response_model=SemanticResponse)
+def semantic_search_endpoint(
+    q: str = Query(..., min_length=2),
+    limit: int = Query(10, ge=1, le=50),
+) -> SemanticResponse:
+    """Meaning-based search via ChromaDB embeddings — finds relevant documents
+    even when they share no keywords with the query."""
+    from app.rag import semantic_search
+
+    hits = semantic_search(q, limit=limit)
+    return SemanticResponse(
+        query=q,
+        results=[
+            SemanticHit(
+                id=h["id"], title=h["title"], source=h["source"], url=h["url"],
+                published_date=h["published_date"],
+                sentiment_label=h["sentiment_label"],
+                impact_level=h["impact_level"], relevance=h["relevance"],
+            )
+            for h in hits
+        ],
+    )
+
+
+class AskSource(BaseModel):
+    n: int
+    title: str
+    source: str
+    published_date: str
+    url: str
+    relevance: float
+
+
+class AskResponse(BaseModel):
+    question: str
+    answer: str
+    model: str
+    sources: list[AskSource]
+
+
+@app.get("/v1/ask", response_model=AskResponse)
+def ask_endpoint(
+    q: str = Query(..., min_length=5),
+    k: int = Query(5, ge=1, le=10),
+) -> AskResponse:
+    """RAG Q&A: retrieves the k most relevant documents and answers from them
+    with numbered citations, using the local LLM. Takes 30-90s on local
+    hardware — this is the lawplain 'Ask' replacement."""
+    from app.rag import ask
+
+    result = ask(q, k=k)
+    return AskResponse(question=q, **result)
+
+
 @app.get("/v1/stats")
 def stats() -> dict:
     """Corpus counts for orientation, grouped by source."""

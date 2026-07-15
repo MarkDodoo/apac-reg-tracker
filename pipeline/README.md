@@ -41,8 +41,16 @@ charts, and a filterable document table over the enriched corpus.
 | Endpoint | Purpose |
 |---|---|
 | `GET /v1/regulations?source=HKMA&limit=20` | Newest documents, filterable |
-| `GET /v1/regulations/search?q=stablecoin` | Keyword search (semantic search in Phase 2) |
+| `GET /v1/regulations/search?q=stablecoin` | Keyword search |
+| `GET /v1/regulations/semantic-search?q=...` | Meaning-based search (ChromaDB embeddings) |
+| `GET /v1/ask?q=...` | RAG Q&A with numbered citations (local LLM, 30-90s) |
 | `GET /v1/stats` | Corpus counts by source |
+
+## Pipeline order
+
+After ingesting new documents: `python -m app.enrich` (tags + summaries),
+then `python -m app.embed` (adds them to the vector index — it embeds
+title + summary, so enrich first).
 
 ## Sources implemented
 
