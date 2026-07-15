@@ -48,7 +48,7 @@ charts, and a filterable document table over the enriched corpus.
 
 | Source | Method | Status |
 |---|---|---|
-| HKMA press releases | Official Open API | ✅ |
+| HKMA press releases | Official Open API | Done |
 | HKMA circulars/guidelines | HTML scraper (API doesn't expose them) | planned |
-| MAS media releases | Sitemap + HTML scraper (no RSS/API exists) | ✅ |
+| MAS media releases | Sitemap + HTML scraper (no RSS/API exists) | Done |
 | ASIC | RSS + data.gov.au | planned |

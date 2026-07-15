@@ -10,18 +10,18 @@ A living record of everything done on this project: decisions made, work complet
 
 ## Current Status
 
-**Phase 1 — Foundation: ✅ COMPLETE (2026-07-15, ~2 weeks ahead of the week-4 target)** — except the ASIC scraper and FinBERT bake-off, tracked below.
+**Phase 1 — Foundation: COMPLETE (2026-07-15, ~2 weeks ahead of the week-4 target)** — except the ASIC scraper and FinBERT bake-off, tracked below.
 
 | Milestone | Status |
 |---|---|
-| Fork lawplain, clone locally | ✅ Done |
-| Run the app locally, verify search works | ✅ Done (2026-07-13) |
-| Python data pipeline skeleton (FastAPI) | ✅ Done (2026-07-13) |
-| Scrapers: MAS, HKMA, ASIC | 🔄 HKMA + MAS done; ASIC next |
-| Database storage for regulations | ✅ SQLite dev DB (Postgres-ready via SQLAlchemy) |
-| Sentiment scoring (FinBERT vs LLM bake-off) | 🔄 LLM side done (qwen2.5:7b); FinBERT comparison pending |
-| LLM summaries + category tagging | ✅ Done (2026-07-14) — full corpus enriched |
-| Basic dashboard of ingested docs | ✅ Done (2026-07-15) — Streamlit, `pipeline/dashboard.py` |
+| Fork lawplain, clone locally | Done |
+| Run the app locally, verify search works | Done (2026-07-13) |
+| Python data pipeline skeleton (FastAPI) | Done (2026-07-13) |
+| Scrapers: MAS, HKMA, ASIC | In progress — HKMA + MAS done; ASIC next |
+| Database storage for regulations | Done — SQLite dev DB (Postgres-ready via SQLAlchemy) |
+| Sentiment scoring (FinBERT vs LLM bake-off) | In progress — LLM side done (qwen2.5:7b); FinBERT comparison pending |
+| LLM summaries + category tagging | Done (2026-07-14) — full corpus enriched |
+| Basic dashboard of ingested docs | Done (2026-07-15) — Streamlit, `pipeline/dashboard.py` |
 
 ---
 

@@ -25,7 +25,7 @@ SENTIMENT_ORDER = ["Restrictive", "Neutral", "Facilitative"]
 BAR_BLUE = "#2a78d6"
 
 st.set_page_config(
-    page_title="APAC Regulation Tracker", page_icon="📡", layout="wide"
+    page_title="APAC Regulation Tracker", layout="wide"
 )
 
 
@@ -192,6 +192,6 @@ st.dataframe(
         "Sentiment": st.column_config.TextColumn(width="small"),
         "Impact": st.column_config.TextColumn(width="small"),
         "Summary": st.column_config.TextColumn(width="large"),
-        "Link": st.column_config.LinkColumn(display_text="Open ↗", width="small"),
+        "Link": st.column_config.LinkColumn(display_text="Open", width="small"),
     },
 )
