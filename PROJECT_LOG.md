@@ -17,7 +17,7 @@ A living record of everything done on this project: decisions made, work complet
 | Fork lawplain, clone locally | Done |
 | Run the app locally, verify search works | Done (2026-07-13) |
 | Python data pipeline skeleton (FastAPI) | Done (2026-07-13) |
-| Scrapers: MAS, HKMA, ASIC | In progress — HKMA + MAS done; ASIC next |
+| Scrapers: MAS, HKMA, ASIC | Done (2026-07-16) — all three regulators |
 | Database storage for regulations | Done — SQLite dev DB (Postgres-ready via SQLAlchemy) |
 | Sentiment scoring (FinBERT vs LLM bake-off) | In progress — LLM side done (qwen2.5:7b); FinBERT comparison pending |
 | LLM summaries + category tagging | Done (2026-07-14) — full corpus enriched |
@@ -49,6 +49,21 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 ---
 
 ## Session Log
+
+### 2026-07-16 — Session 8: ASIC scraper, scheduler, RAG tuning
+
+**Done:**
+- **RAG speed/quality tuning** (user feedback: answers slow on CPU-only hardware — no GPU, so a 7b model takes 60-90s):
+  - Relevance threshold (>= 0.30, keep min 2), per-source text budget 2500 -> 1500 chars, num_ctx 16384 -> 8192, `ANSWER_MODEL` env override (`qwen2.5:3b` for speed when demoing).
+  - Tried embedding category tags into vectors; **measured it made ranking worse** (topically-tagged but irrelevant docs rose) — reverted. Documented in `embed.py`: the real upgrade path is a stronger embedder (e.g. nomic-embed-text).
+  - Known issue remains: in a small corpus, same-regulator docs all look similar to MiniLM (professor appointments score ~0.45 for a green-finance query). Will improve as the corpus grows.
+- **ASIC scraper** (`app/scrapers/asic.py`): no RSS, but the newsroom frontend loads everything from a public JSON file (~6,800 items with dates, types, topic tags) found in ASIC's own JS bundle — the richest source of our three regulators. Full text fetched per article. 20 items ingested on first run.
+- **APScheduler runner** (`app/scheduler.py`): `--once` for a full manual run; default mode schedules daily 07:00 ingest -> backfill HKMA text -> enrich -> embed. Stage failures are isolated so one bad source doesn't stop the rest.
+- **Verified with a full automated run** (71 min, CPU): picked up 44 new documents across all three sources, enriched 60, indexed everything. The run exposed a gap — HKMA docs entered enrichment without body text — fixed by adding the backfill stage to the scheduler.
+
+**Corpus: 136 documents, 136 enriched, across 3 jurisdictions (HKMA 64, ASIC 45, MAS 27).**
+
+**Next up:** FinBERT bake-off; rebrand UI to APAC Regulation Tracker; point Search UI at our backend; proper root README.
 
 ### 2026-07-16 — Session 7: Ask UI wired to local RAG (graff replaced)
 

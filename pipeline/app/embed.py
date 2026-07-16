@@ -31,6 +31,10 @@ def get_collection() -> chromadb.Collection:
 
 
 def _doc_text(doc: Regulation) -> str:
+    # Title + summary only. Adding category tags was tried (2026-07-16) and
+    # measurably hurt ranking — topical tags correlate across unrelated docs
+    # in a small corpus. The real upgrade path is a stronger embedder
+    # (e.g. nomic-embed-text via Ollama) once retrieval quality matters more.
     parts = [doc.title]
     if doc.summary:
         parts.append(doc.summary)

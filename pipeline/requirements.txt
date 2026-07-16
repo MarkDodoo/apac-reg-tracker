@@ -8,3 +8,4 @@ streamlit
 pandas
 altair
 chromadb
+apscheduler

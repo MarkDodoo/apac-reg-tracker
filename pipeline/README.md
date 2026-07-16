@@ -59,4 +59,11 @@ title + summary, so enrich first).
 | HKMA press releases | Official Open API | Done |
 | HKMA circulars/guidelines | HTML scraper (API doesn't expose them) | planned |
 | MAS media releases | Sitemap + HTML scraper (no RSS/API exists) | Done |
-| ASIC | RSS + data.gov.au | planned |
+| ASIC newsroom | Public newsroom-all.json (~6,800 items) + page fetch | Done |
+
+## Automated daily runs
+
+```bash
+.venv\Scripts\python -m app.scheduler          # daily at 07:00 (leave running)
+.venv\Scripts\python -m app.scheduler --once   # full pipeline now: ingest, enrich, embed
+```

@@ -6,6 +6,8 @@ that context with numbered citations. No tool-calling loop — deterministic
 retrieval suits small local models far better.
 """
 
+import os
+
 import ollama
 from sqlalchemy import select
 
@@ -13,7 +15,14 @@ from app.db import SessionLocal
 from app.embed import get_collection
 from app.models import Regulation
 
-ANSWER_MODEL = "qwen2.5:7b"
+# Override with e.g. ANSWER_MODEL=qwen2.5:3b for faster (weaker) answers on CPU.
+ANSWER_MODEL = os.environ.get("ANSWER_MODEL", "qwen2.5:7b")
+
+# Sources below this cosine similarity are dropped (keeping at least MIN_SOURCES)
+# — they add prompt-processing time and noise, and the model ignores them anyway.
+MIN_RELEVANCE = 0.30
+MIN_SOURCES = 2
+BODY_CHARS = 1500  # per-source text budget; CPU prompt processing is the bottleneck
 
 ANSWER_PROMPT = """You are a regulatory research assistant for APAC financial
 compliance officers. Answer the question using ONLY the numbered sources below.
@@ -46,10 +55,16 @@ def semantic_search(query: str, limit: int = 10) -> list[dict]:
 
 
 def _retrieve(question: str, k: int) -> tuple[list[str], list[dict]]:
-    """Top-k retrieval -> (numbered context blocks, source descriptors)."""
+    """Top-k retrieval -> (numbered context blocks, source descriptors).
+
+    Weak matches (below MIN_RELEVANCE) are dropped, keeping at least
+    MIN_SOURCES so the model always has something to reason over.
+    """
     hits = semantic_search(question, limit=k)
     if not hits:
         return [], []
+    strong = [h for h in hits if h["relevance"] >= MIN_RELEVANCE]
+    hits = strong if len(strong) >= MIN_SOURCES else hits[:MIN_SOURCES]
 
     with SessionLocal() as session:
         docs = {
@@ -67,7 +82,7 @@ def _retrieve(question: str, k: int) -> tuple[list[str], list[dict]]:
         doc = docs.get(hit["id"])
         if not doc:
             continue
-        body = (doc.raw_text or doc.summary or "")[:2500]
+        body = (doc.raw_text or doc.summary or "")[:BODY_CHARS]
         context_blocks.append(
             f"[{n}] {doc.title}\n"
             f"    Source: {doc.source} ({doc.jurisdiction}), "
@@ -107,7 +122,7 @@ def ask(question: str, k: int = 5) -> dict:
     resp = ollama.chat(
         model=ANSWER_MODEL,
         messages=_answer_messages(question, context_blocks),
-        options={"temperature": 0.1, "num_ctx": 16384},
+        options={"temperature": 0.1, "num_ctx": 8192},
     )
     return {
         "answer": (resp.message.content or "").strip(),
@@ -147,7 +162,7 @@ def ask_stream(question: str, k: int = 5):
     stream = ollama.chat(
         model=ANSWER_MODEL,
         messages=_answer_messages(question, context_blocks),
-        options={"temperature": 0.1, "num_ctx": 16384},
+        options={"temperature": 0.1, "num_ctx": 8192},
         stream=True,
     )
     for chunk in stream:

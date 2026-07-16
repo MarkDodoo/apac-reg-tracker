@@ -19,7 +19,7 @@ from sqlalchemy import select
 
 from app.db import SessionLocal, init_db
 from app.models import Regulation
-from app.scrapers import hkma, mas
+from app.scrapers import asic, hkma, mas
 
 
 def ingest_hkma(max_records: int) -> tuple[int, int]:
@@ -58,6 +58,24 @@ def ingest_mas(max_records: int) -> tuple[int, int]:
     return new, len(known)
 
 
+def ingest_asic(max_records: int) -> tuple[int, int]:
+    """Scrape new ASIC newsroom items (full text included). Returns (new, seen)."""
+    with SessionLocal() as session:
+        known = set(
+            session.scalars(
+                select(Regulation.source_url).where(Regulation.source == asic.SOURCE)
+            )
+        )
+    records = asic.fetch_media_releases(max_records=max_records, skip_urls=known)
+    new = 0
+    with SessionLocal() as session:
+        for rec in records:
+            session.add(Regulation(**rec))
+            session.commit()  # per-record: partial progress survives errors
+            new += 1
+    return new, len(known)
+
+
 def backfill_full_text(limit: int) -> int:
     """Fetch article text for the newest records that don't have it yet."""
     fetched = 0
@@ -84,7 +102,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Ingest regulatory documents")
     parser.add_argument(
         "--source",
-        choices=["all", "hkma", "mas"],
+        choices=["all", "hkma", "mas", "asic"],
         default="all",
         help="which regulator to ingest (default: all)",
     )
@@ -109,6 +127,10 @@ def main() -> None:
         # MAS fetches every article page at a 2s crawl delay — default small.
         new, existing = ingest_mas(args.max or 15)
         print(f"MAS media releases: {new} new ({existing} known before this run)")
+
+    if args.source in ("all", "asic"):
+        new, existing = ingest_asic(args.max or 25)
+        print(f"ASIC newsroom: {new} new ({existing} known before this run)")
 
     if args.full_text:
         fetched = backfill_full_text(args.full_text)
