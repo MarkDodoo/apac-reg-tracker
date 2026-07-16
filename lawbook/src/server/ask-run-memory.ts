@@ -6,6 +6,7 @@ import {
   type ChatTurn,
 } from "@/lib/agent";
 import { updateThreadRunStatus } from "@/lib/ask-threads";
+import { askRegAgent, regAgentEnabled } from "@/lib/reg-agent";
 
 const MAX_EVENTS = 2_000;
 const RUN_TTL_MS = 30 * 60 * 1000;
@@ -127,7 +128,13 @@ export function startMemoryAskRun(input: StartMemoryRunInput): MemoryRun {
         });
       }
 
-      const agent = input.useSandbox ? askLegalAgentSandboxed : askLegalAgent;
+      // Prefer our local RAG backend when configured; the graff-based legal
+      // agents remain as the fallback while the migration completes.
+      const agent = regAgentEnabled()
+        ? askRegAgent
+        : input.useSandbox
+          ? askLegalAgentSandboxed
+          : askLegalAgent;
       for await (const ev of agent(
         input.question,
         abort.signal,

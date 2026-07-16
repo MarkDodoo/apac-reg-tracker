@@ -45,12 +45,11 @@ def semantic_search(query: str, limit: int = 10) -> list[dict]:
     return hits
 
 
-def ask(question: str, k: int = 5) -> dict:
-    """Retrieve top-k docs and answer with citations. Returns answer + sources."""
+def _retrieve(question: str, k: int) -> tuple[list[str], list[dict]]:
+    """Top-k retrieval -> (numbered context blocks, source descriptors)."""
     hits = semantic_search(question, limit=k)
     if not hits:
-        return {"answer": "The corpus is empty — ingest documents first.",
-                "sources": []}
+        return [], []
 
     with SessionLocal() as session:
         docs = {
@@ -86,15 +85,28 @@ def ask(question: str, k: int = 5) -> dict:
                 "relevance": hit["relevance"],
             }
         )
+    return context_blocks, sources
+
+
+def _answer_messages(question: str, context_blocks: list[str]) -> list[dict]:
+    return [{
+        "role": "user",
+        "content": ANSWER_PROMPT.format(
+            context="\n\n".join(context_blocks), question=question
+        ),
+    }]
+
+
+def ask(question: str, k: int = 5) -> dict:
+    """Retrieve top-k docs and answer with citations. Returns answer + sources."""
+    context_blocks, sources = _retrieve(question, k)
+    if not context_blocks:
+        return {"answer": "The corpus is empty — ingest documents first.",
+                "model": ANSWER_MODEL, "sources": []}
 
     resp = ollama.chat(
         model=ANSWER_MODEL,
-        messages=[{
-            "role": "user",
-            "content": ANSWER_PROMPT.format(
-                context="\n\n".join(context_blocks), question=question
-            ),
-        }],
+        messages=_answer_messages(question, context_blocks),
         options={"temperature": 0.1, "num_ctx": 16384},
     )
     return {
@@ -102,3 +114,48 @@ def ask(question: str, k: int = 5) -> dict:
         "model": ANSWER_MODEL,
         "sources": sources,
     }
+
+
+def ask_stream(question: str, k: int = 5):
+    """Streaming variant of ask(): yields event dicts shaped like the
+    lawbook frontend's AgentEvents, so the Next.js route can proxy them
+    straight through to the existing Ask UI.
+
+      {"type": "progress", ...} -> retrieval started
+      {"type": "tool", ...}     -> one per retrieved source (shown as chips)
+      {"type": "delta", "text"} -> answer tokens as they generate
+      {"type": "done", "text", "sources"} -> full answer + source list
+    """
+    yield {"type": "progress", "phase": "searching",
+           "message": "Searching the regulatory corpus..."}
+    context_blocks, sources = _retrieve(question, k)
+    if not context_blocks:
+        yield {"type": "error",
+               "message": "The corpus is empty — ingest documents first."}
+        return
+
+    for s in sources:
+        yield {"type": "tool", "name": "retrieve",
+               "key": f"retrieve:{s['url']}",
+               "summary": f"[{s['n']}] {s['source']}: {s['title'][:70]}",
+               "kind": "search"}
+
+    yield {"type": "progress", "phase": "answering",
+           "message": f"Writing answer with {ANSWER_MODEL}..."}
+
+    parts: list[str] = []
+    stream = ollama.chat(
+        model=ANSWER_MODEL,
+        messages=_answer_messages(question, context_blocks),
+        options={"temperature": 0.1, "num_ctx": 16384},
+        stream=True,
+    )
+    for chunk in stream:
+        text = chunk.message.content or ""
+        if text:
+            parts.append(text)
+            yield {"type": "delta", "text": text}
+
+    yield {"type": "done", "text": "".join(parts).strip(),
+           "model": ANSWER_MODEL, "sources": sources,
+           "costUsd": 0, "contextTokens": 0}

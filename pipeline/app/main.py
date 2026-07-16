@@ -182,6 +182,30 @@ def ask_endpoint(
     return AskResponse(question=q, **result)
 
 
+@app.get("/v1/ask/stream")
+def ask_stream_endpoint(
+    q: str = Query(..., min_length=5),
+    k: int = Query(5, ge=1, le=10),
+):
+    """Streaming version of /v1/ask: Server-Sent Events, one JSON AgentEvent
+    per `data:` line — the shape the Next.js Ask UI already consumes."""
+    import json as _json
+
+    from fastapi.responses import StreamingResponse
+
+    from app.rag import ask_stream
+
+    def gen():
+        for event in ask_stream(q, k=k):
+            yield f"data: {_json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"cache-control": "no-cache, no-transform"},
+    )
+
+
 @app.get("/v1/stats")
 def stats() -> dict:
     """Corpus counts for orientation, grouped by source."""

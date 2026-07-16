@@ -29,6 +29,7 @@ import { loadChatContext } from "@/lib/ask-context";
 import { recordAskQuestion } from "@/lib/ask-history";
 import { saveThread } from "@/lib/ask-threads";
 import { getSession } from "@/lib/auth";
+import { askRegAgent, regAgentEnabled } from "@/lib/reg-agent";
 import {
   hasMemoryAskRun,
   startMemoryAskRun,
@@ -297,7 +298,11 @@ export async function POST(req: Request): Promise<Response> {
             elapsedMs: 0,
           });
         }
-        const agent = useSandbox ? askLegalAgentSandboxed : askLegalAgent;
+        const agent = regAgentEnabled()
+          ? askRegAgent
+          : useSandbox
+            ? askLegalAgentSandboxed
+            : askLegalAgent;
         for await (const ev of agent(question, req.signal, context, history)) {
           safeEnqueue(ev);
           if (ev.type === "error") break;

@@ -50,6 +50,22 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 
 ## Session Log
 
+### 2026-07-16 — Session 7: Ask UI wired to local RAG (graff replaced)
+
+**Done:**
+- `pipeline`: added `GET /v1/ask/stream` — Server-Sent Events emitting AgentEvent-shaped JSON (progress, per-source "tool" chips, answer deltas from Ollama streaming, done-with-sources).
+- `lawbook/src/lib/reg-agent.ts`: adapter exposing the same `AsyncGenerator<AgentEvent>` contract as the old graff agents, proxying the pipeline's SSE stream. On completion it appends a markdown "Sources" footer (numbered, clickable links) so citations render in the existing UI unchanged.
+- Agent selection swapped in `ask-run-memory.ts` and `api/ask/route.ts`: when `REG_TRACKER_API_URL` is set (now in `.env`/`.env.example`), Ask uses our backend; graff paths remain as fallback.
+- **Verified end-to-end through the real authenticated route:** signed up a test user (test@example.com), POST `/api/ask` streamed 171 answer deltas + cited answer for "What is MAS doing to support green finance?" — correct answer citing the Transition Planning guidelines and the US$250m ETAF first close. Run reconnection (`runId` + `from`) also works.
+- Typecheck and Biome clean.
+
+**Known limitations (future work):**
+- Pinned-document context and multi-turn history are not yet forwarded to the RAG backend (single-turn Q&A only).
+- Low-relevance sources (~0.3) still make it into the source list — consider a relevance threshold.
+- The Search UI still hits backend.lawplain.com; swapping it to our `/v1/regulations` endpoints is a separate task.
+
+**Next up:** ASIC scraper; APScheduler daily ingestion; FinBERT bake-off.
+
 ### 2026-07-15 — Session 6: ChromaDB + RAG Q&A (Phase 2 begins)
 
 **Done:**
