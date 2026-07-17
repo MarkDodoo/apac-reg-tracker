@@ -19,7 +19,7 @@ A living record of everything done on this project: decisions made, work complet
 | Python data pipeline skeleton (FastAPI) | Done (2026-07-13) |
 | Scrapers: MAS, HKMA, ASIC | Done (2026-07-16) — all three regulators |
 | Database storage for regulations | Done — SQLite dev DB (Postgres-ready via SQLAlchemy) |
-| Sentiment scoring (FinBERT vs LLM bake-off) | In progress — LLM side done (qwen2.5:7b); FinBERT comparison pending |
+| Sentiment scoring (FinBERT vs LLM bake-off) | Done (2026-07-17) — LLM wins 30/30 vs 24/30; see pipeline/eval/RESULTS.md |
 | LLM summaries + category tagging | Done (2026-07-14) — full corpus enriched |
 | Basic dashboard of ingested docs | Done (2026-07-15) — Streamlit, `pipeline/dashboard.py` |
 
@@ -42,13 +42,24 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 
 ## Open Questions / To Discuss with Xhoni
 
-- FinBERT classifies financial sentiment (positive/negative/neutral), **not** regulatory stance (Restrictive/Neutral/Facilitative). Plan: small bake-off in Phase 1 — vanilla FinBERT vs `qwen2.5:3b` with a classification prompt — before committing.
+- **RESOLVED (2026-07-17): FinBERT bake-off.** FinBERT 24/30 vs qwen2.5:7b 30/30 on a 30-doc hand-labelled gold set. FinBERT's errors are systematic: scam alerts -> Restrictive (negative tone but no obligations on firms), enabling deregulation -> Neutral. Financial *tone* and regulatory *stance* are different constructs. Full writeup + caveats: `pipeline/eval/RESULTS.md`. LLM classification stays (Decision #6 confirmed). Would be strengthened by an independently-labelled sample from Mark or Xhoni.
 - Confirm the RAG-instead-of-agent decision (Decision #1).
 - Keep or strip the lawplain auth/Cloudflare machinery long-term?
+- PDPA/deployment posture (see Session 9 notes): demo collects no third-party personal data; alerts demoed via local fake SMTP inbox.
 
 ---
 
 ## Session Log
+
+### 2026-07-17 — Session 11: FinBERT bake-off (Phase 1 fully complete)
+
+**Done:**
+- Built `pipeline/eval/`: 30-document hand-labelled gold set (stratified 10/10/10) + `finbert_bakeoff.py` runner (torch/transformers are eval-only deps, not in requirements.txt).
+- **Result: FinBERT 24/30 (80%), qwen2.5:7b 30/30.** FinBERT's six errors are one systematic mistake — it measures financial tone, not regulatory stance: 4 scam alerts marked Restrictive, 2 facilitative deregulation items marked Neutral. It scored 10/10 on enforcement (where tone and stance coincide).
+- Full writeup with methodology caveats in `pipeline/eval/RESULTS.md` — n=30, single non-blind rater, stratified by the LLM's own labels. Suggested follow-up: an independently labelled sample from Mark/Xhoni.
+- This closes the last Phase 1 item and resolves the first open question for Xhoni.
+
+**Next up:** email alerts (Mailpit demo, per PDPA decision); legacy legal-page cleanup; Phase 3 recommender.
 
 ### 2026-07-17 — Session 10: Homepage search swapped to our backend
 
