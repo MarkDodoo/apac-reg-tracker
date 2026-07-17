@@ -6,7 +6,7 @@ import { buildMetadata } from "@/lib/seo";
 export const metadata: Metadata = buildMetadata({
   title: "FAQ & Help",
   description:
-    "How to search Singapore law on Lawplain, ask plain-English questions, save and resume research threads, and use the API.",
+    "How to search Singapore law on APAC Regulation Tracker, ask plain-English questions, save and resume research threads, and use the API.",
   path: "/faq",
 });
 
@@ -56,10 +56,10 @@ const SECTIONS: Section[] = [
   },
   {
     id: "ask",
-    title: "Ask Lawplain",
+    title: "Ask RegTracker",
     items: [
       {
-        q: "What is Ask Lawplain?",
+        q: "What is Ask RegTracker?",
         a: (
           <>
             Ask a question in plain English (e.g.{" "}
@@ -67,7 +67,7 @@ const SECTIONS: Section[] = [
             agent runs real searches across the corpus, then writes a{" "}
             <strong>cited</strong> answer that streams back. Open it from{" "}
             <Link href="/ask" className="text-accent underline">
-              Ask Lawplain
+              Ask RegTracker
             </Link>{" "}
             in the nav.
           </>
@@ -183,7 +183,7 @@ const SECTIONS: Section[] = [
             <Link href="/sign-up" className="text-accent underline">
               username and password
             </Link>
-            ) unlocks Ask Lawplain, saved threads, a saved workspace and API
+            ) unlocks Ask RegTracker, saved threads, a saved workspace and API
             keys.
           </>
         ),
@@ -210,8 +210,8 @@ export default function FaqPage() {
           FAQ &amp; Help
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
-          How to get around Lawplain — searching, asking questions, saving your
-          research, and using the API.
+          How to get around APAC Regulation Tracker — searching, asking
+          questions, saving your research, and using the API.
         </p>
         <nav className="mt-4 flex flex-wrap gap-2">
           {SECTIONS.map((s) => (
@@ -249,8 +249,9 @@ export default function FaqPage() {
       </div>
 
       <p className="mt-10 text-xs leading-relaxed text-muted-2">
-        Lawplain provides read-only legal information, not legal advice. Always
-        verify against the primary source before relying on anything here.
+        APAC Regulation Tracker provides read-only legal information, not legal
+        advice. Always verify against the primary source before relying on
+        anything here.
       </p>
     </main>
   );

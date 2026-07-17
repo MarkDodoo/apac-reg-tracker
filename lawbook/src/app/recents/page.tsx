@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { RecentlyViewedList } from "@/components/RecentlyViewedList";
 
 export const metadata: Metadata = {
-  title: "Recently viewed — Lawplain",
+  title: "Recently viewed — APAC Regulation Tracker",
 };
 
 export default function RecentsPage() {

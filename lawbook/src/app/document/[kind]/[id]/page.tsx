@@ -55,7 +55,7 @@ export async function generateMetadata({
   const description = detail
     ? documentDescription(decodedKind, detail, displayTitle)
     : metaDescription(
-        `View ${displayTitle} on Lawplain. Search Singapore ${label.toLowerCase()} materials and related legal information.`,
+        `View ${displayTitle} on APAC Regulation Tracker. Search Singapore ${label.toLowerCase()} materials and related legal information.`,
       );
   const hasQueryVariant = Boolean(q || title || snippet || meta || returnTo);
 
@@ -118,7 +118,7 @@ export default async function DocumentResultPage({
   const description = detail
     ? documentDescription(decodedKind, detail, displayTitle)
     : metaDescription(
-        `View ${displayTitle} on Lawplain. Search Singapore ${label.toLowerCase()} materials and related legal information.`,
+        `View ${displayTitle} on APAC Regulation Tracker. Search Singapore ${label.toLowerCase()} materials and related legal information.`,
       );
 
   return (
@@ -293,7 +293,7 @@ function documentDescription(
   return metaDescription(
     `Read ${title}, a Singapore ${label}${date ? ` from ${date}` : ""}. ${
       rows.length > 0 ? `${rows.join("; ")}. ` : ""
-    }Search public legal materials on Lawplain.`,
+    }Search public legal materials on APAC Regulation Tracker.`,
   );
 }
 

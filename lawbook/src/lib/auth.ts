@@ -56,7 +56,7 @@ export async function getAuth() {
   });
 
   return betterAuth({
-    appName: "Lawplain",
+    appName: "APAC Regulation Tracker",
     secret: authSecret,
     baseURL: authUrl,
     trustedOrigins: () => getTrustedOrigins(authUrl, trustedOrigins),

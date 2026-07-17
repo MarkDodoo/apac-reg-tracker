@@ -1,10 +1,10 @@
 /**
- * /ask — dedicated Lawplain research chat page.
+ * /ask — dedicated APAC Regulation Tracker research chat page.
  *
  * Standalone (no context): a full-width research assistant.
  * With ?cite=<ref>&kind=judgment|statute: the chat is pre-grounded in that
  *   document (fetched server-side) — reached from the detail pages' "Ask
- *   Lawplain about this" link.
+ *   APAC Regulation Tracker about this" link.
  */
 import type { Metadata } from "next";
 import { AskAgent } from "@/components/AskAgent";
@@ -20,9 +20,9 @@ export async function generateMetadata({
   const hasContextVariant = Boolean(cite || kind);
 
   return buildMetadata({
-    title: "Ask Lawplain",
+    title: "Ask RegTracker",
     description:
-      "Ask plain-English questions across Singapore judgments, statutes, Hansard, bills and practice directions, with cited legal information from Lawplain.",
+      "Ask plain-English questions across Singapore judgments, statutes, Hansard, bills and practice directions, with cited legal information from APAC Regulation Tracker.",
     path: "/ask",
     noIndex: hasContextVariant,
     noIndexFollow: hasContextVariant,

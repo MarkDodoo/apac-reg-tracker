@@ -20,7 +20,8 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = buildMetadata({
   title: "Welcome",
-  description: "Get started with your Lawplain legal research workspace.",
+  description:
+    "Get started with your APAC Regulation Tracker legal research workspace.",
   path: "/welcome",
   noIndex: true,
 });
@@ -35,7 +36,7 @@ const features = [
     icon: SearchIcon,
   },
   {
-    title: "Ask Lawplain",
+    title: "Ask RegTracker",
     description:
       "Ask a legal research question and get an answer with citations.",
     icon: SparkleIcon,
@@ -102,7 +103,7 @@ export default async function WelcomePage({ searchParams }: WelcomePageProps) {
           Your research workspace
         </p>
         <h1 className="mt-3 font-serif text-4xl font-medium tracking-tight text-foreground sm:text-5xl">
-          Welcome to Lawplain
+          Welcome to APAC Regulation Tracker
         </h1>
         <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-muted">
           Search Singapore law, ask cited research questions, and keep the

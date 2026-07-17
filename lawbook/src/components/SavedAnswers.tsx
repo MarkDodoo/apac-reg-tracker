@@ -147,7 +147,7 @@ const markdownComponents: Components = {
 };
 
 /**
- * Saved Ask Lawplain answers (issue #22). Self-contained list with copy /
+ * Saved Ask RegTracker answers (issue #22). Self-contained list with copy /
  * export / delete + reopen-source, fetched from the session-scoped
  * /api/saved-answers route. Renders nothing for signed-out users (the page's
  * SavedWorkspace already shows the sign-in prompt).
@@ -243,14 +243,14 @@ export function SavedAnswers() {
         <div className="rounded-xl border border-dashed border-border-strong p-5 text-sm text-muted">
           <p className="font-medium text-foreground">No saved answers yet.</p>
           <p className="mt-1">
-            Ask Lawplain a question, then use Save on an answer.
+            Ask RegTracker a question, then use Save on an answer.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Link
               href="/ask"
               className="rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent"
             >
-              Ask Lawplain
+              Ask RegTracker
             </Link>
           </div>
         </div>

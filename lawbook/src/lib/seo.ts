@@ -1,25 +1,26 @@
 import type { Metadata } from "next";
 
-export const SITE_NAME = "Lawplain";
+export const SITE_NAME = "APAC Regulation Tracker";
 export const SITE_ORIGIN = (
-  process.env.NEXT_PUBLIC_SITE_URL ?? "https://lawplain.com"
+  process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"
 ).replace(/\/+$/, "");
-export const DEFAULT_TITLE = "Lawplain | Singapore Legal Research";
+export const DEFAULT_TITLE =
+  "APAC Regulation Tracker | Regulatory Intelligence";
 export const DEFAULT_DESCRIPTION =
-  "Search Singapore judgments, statutes, subsidiary legislation, Hansard, bills and practice directions. Read-only legal information, not advice.";
+  "Track regulatory developments from MAS, HKMA, ASIC and more — AI summaries, sentiment analysis and cited Q&A. Regulatory information, not legal advice.";
 export const OG_IMAGE = "/opengraph-image.png";
 
 export const SITE_KEYWORDS = [
-  "Singapore legal research",
-  "Singapore judgments",
-  "Singapore case law",
-  "Singapore statutes",
-  "subsidiary legislation",
-  "Singapore Hansard",
-  "Singapore bills",
-  "practice directions",
-  "legal information",
-  "Lawplain",
+  "APAC regulation",
+  "regulatory compliance",
+  "MAS",
+  "HKMA",
+  "ASIC",
+  "regtech",
+  "financial regulation",
+  "crypto regulation",
+  "regulatory intelligence",
+  "APAC Regulation Tracker",
 ];
 
 const INDEX_ROBOTS: Metadata["robots"] = {
@@ -99,7 +100,7 @@ export function buildMetadata({
           url: OG_IMAGE,
           width: 1200,
           height: 630,
-          alt: "Lawplain Singapore legal research preview",
+          alt: "APAC Regulation Tracker preview",
         },
       ],
     },

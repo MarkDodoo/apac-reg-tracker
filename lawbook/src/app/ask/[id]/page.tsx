@@ -1,5 +1,5 @@
 /**
- * /ask/[id] — a fixed, resumable Lawplain research thread.
+ * /ask/[id] — a fixed, resumable APAC Regulation Tracker research thread.
  *
  * Same chat surface as /ask, but bound to a saved thread id so the
  * conversation can be linked to and returned to. The client restores the
@@ -15,9 +15,9 @@ import { buildMetadata } from "@/lib/seo";
 
 export function generateMetadata(): Metadata {
   return buildMetadata({
-    title: "Ask Lawplain",
+    title: "Ask RegTracker",
     description:
-      "A saved Lawplain research thread across Singapore judgments, statutes, Hansard, bills and practice directions.",
+      "A saved APAC Regulation Tracker research thread across Singapore judgments, statutes, Hansard, bills and practice directions.",
     path: "/ask",
     noIndex: true,
     noIndexFollow: true,

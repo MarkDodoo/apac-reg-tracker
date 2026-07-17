@@ -42,7 +42,7 @@ const source: CitationSource = {
 export const metadata: Metadata = buildMetadata({
   title: "Suggested Sections Preview",
   description:
-    "Internal preview page for Lawplain suggested judgment sections.",
+    "Internal preview page for APAC Regulation Tracker suggested judgment sections.",
   path: "/suggestions-preview",
   noIndex: true,
 });
@@ -88,7 +88,7 @@ export default function SuggestionsPreviewPage() {
             className="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent-soft px-3.5 py-2 text-sm font-medium text-accent transition-colors hover:border-accent hover:bg-accent hover:text-primary-fg"
           >
             <SparkleIcon className="h-4 w-4" />
-            Ask Lawplain about this
+            Ask RegTracker about this
           </Link>
         </div>
       </header>

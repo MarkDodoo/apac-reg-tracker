@@ -57,9 +57,9 @@ export function GenericDocumentReader({
         {!fullBodyAvailable && (
           <p className="mb-4 rounded-lg border border-accent/25 bg-accent-soft/40 px-4 py-3 text-sm text-muted">
             Full-text detail endpoints are not exposed for this corpus yet, so
-            Lawplain is showing all text currently returned for this result. The
-            reader controls, highlighting, save, copy, and Ask actions still
-            follow the Judgment page style.
+            APAC Regulation Tracker is showing all text currently returned for
+            this result. The reader controls, highlighting, save, copy, and Ask
+            actions still follow the Judgment page style.
           </p>
         )}
 

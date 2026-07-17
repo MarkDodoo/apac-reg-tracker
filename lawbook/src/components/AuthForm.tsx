@@ -282,7 +282,7 @@ export function AuthForm({ mode, socialProviders }: AuthFormProps) {
     <div className="mx-auto w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-sm">
       <div className="mb-6">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-2">
-          Lawplain account
+          APAC Regulation Tracker account
         </p>
         <h1 className="mt-1 font-serif text-2xl font-medium text-foreground">
           {isSignUp ? "Create an account" : "Sign in"}
@@ -290,12 +290,12 @@ export function AuthForm({ mode, socialProviders }: AuthFormProps) {
         <p className="mt-2 text-sm text-muted">
           {isSignUp
             ? "Use a username and password to save research under your profile."
-            : "Sign in to use saved research features and Ask Lawplain."}
+            : "Sign in to use saved research features and Ask RegTracker."}
         </p>
         <p className="mt-2 text-xs leading-5 text-muted-2">
           Already have a username/password account? Keep using that method.
-          OAuth may create a separate account; Lawplain does not automatically
-          merge accounts.
+          OAuth may create a separate account; APAC Regulation Tracker does not
+          automatically merge accounts.
         </p>
       </div>
 

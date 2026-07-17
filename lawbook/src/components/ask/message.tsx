@@ -1,10 +1,10 @@
 /**
- * Composable conversation-message primitives for Ask Lawplain.
+ * Composable conversation-message primitives for Ask RegTracker.
  *
  * The shape is inspired by the shadcn `Message` composition — a row that owns
  * avatar + alignment, with a content column holding an optional header, the
  * message surface (`Bubble`), and an optional footer — but it is built on
- * Lawplain's own design tokens (no shadcn/radix dependency).
+ * APAC Regulation Tracker's own design tokens (no shadcn/radix dependency).
  *
  *   Message            row: avatar + content, aligned start (assistant) or end (user)
  *   ├── MessageAvatar  avatar slot, top-anchored next to the header

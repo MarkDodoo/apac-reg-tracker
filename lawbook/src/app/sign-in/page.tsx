@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = buildMetadata({
   title: "Sign In",
-  description: "Sign in to your Lawplain research workspace.",
+  description: "Sign in to your APAC Regulation Tracker research workspace.",
   path: "/sign-in",
   noIndex: true,
 });

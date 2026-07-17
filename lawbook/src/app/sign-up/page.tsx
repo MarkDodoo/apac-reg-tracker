@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = buildMetadata({
   title: "Create Account",
-  description: "Create a Lawplain account for saved Singapore legal research.",
+  description:
+    "Create a APAC Regulation Tracker account for saved Singapore legal research.",
   path: "/sign-up",
   noIndex: true,
 });

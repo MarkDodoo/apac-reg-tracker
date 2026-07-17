@@ -1414,7 +1414,7 @@ export function AskAgent({
           tools: [],
           progress: [],
           phase: "error",
-          error: "Please sign in to use Ask Lawplain.",
+          error: "Please sign in to use Ask RegTracker.",
         };
 
         resetHistoryNavigation();
@@ -1643,7 +1643,7 @@ export function AskAgent({
           signal: ac.signal,
         });
         if (res.status === 401) {
-          throw new Error("Please sign in to use Ask Lawplain.");
+          throw new Error("Please sign in to use Ask RegTracker.");
         }
         if (!res.ok || !res.body) {
           const msg = await res.text().catch(() => res.statusText);
@@ -2727,7 +2727,7 @@ export function AskAgent({
               <SparkleIcon className="h-6 w-6" />
             </span>
             <h1 className="font-serif text-4xl font-medium tracking-tight text-foreground sm:text-5xl">
-              Ask Lawplain
+              Ask RegTracker
             </h1>
             <p className="mt-3 max-w-md text-balance text-sm text-muted">
               {pinnedContext
@@ -3410,7 +3410,7 @@ const AssistantMessage = memo(function AssistantMessage({
         </span>
       </MessageAvatar>
       <MessageContent className="gap-2">
-        <MessageHeader>Lawplain</MessageHeader>
+        <MessageHeader>APAC Regulation Tracker</MessageHeader>
 
         {/* Tool steps — live while searching, settled once answered */}
         {m.tools.length > 0 && (
@@ -3502,7 +3502,7 @@ const AssistantMessage = memo(function AssistantMessage({
         )}
         {m.phase === "error" && m.error && (
           <p className="w-fit rounded-2xl rounded-bl-md bg-red-50 px-3 py-2 text-[13px] text-red-700">
-            {m.error === "Please sign in to use Ask Lawplain." ? (
+            {m.error === "Please sign in to use Ask RegTracker." ? (
               <>
                 Please{" "}
                 <Link
@@ -3518,7 +3518,7 @@ const AssistantMessage = memo(function AssistantMessage({
                 >
                   sign up
                 </Link>{" "}
-                to use Ask Lawplain.
+                to use Ask RegTracker.
               </>
             ) : (
               m.error

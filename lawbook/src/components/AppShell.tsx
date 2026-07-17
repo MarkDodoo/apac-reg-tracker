@@ -32,7 +32,7 @@ const NAV = [
   },
   {
     href: "/ask",
-    label: "Ask Lawplain",
+    label: "Ask RegTracker",
     icon: SparkleIcon,
   },
   {
@@ -357,7 +357,7 @@ export function AppShell({
             )}
             <Link href="/" className="flex items-center gap-2.5">
               <span className="font-serif text-lg font-medium leading-none tracking-tight text-foreground">
-                Lawplain<span className="text-accent">.</span>
+                RegTracker<span className="text-accent">.</span>
               </span>
             </Link>
           </div>
@@ -418,7 +418,7 @@ export function AppShell({
           >
             <span className={collapsed ? "" : "lg:hidden"}>L</span>
             <span className={collapsed ? "hidden" : "hidden lg:inline"}>
-              Lawplain
+              APAC Regulation Tracker
             </span>
             <span className="text-accent">.</span>
           </Link>
@@ -512,7 +512,7 @@ export function AppShell({
                 href="/"
                 className="font-serif text-xl font-medium tracking-tight"
               >
-                Lawplain<span className="text-accent">.</span>
+                RegTracker<span className="text-accent">.</span>
               </Link>
               <button
                 type="button"

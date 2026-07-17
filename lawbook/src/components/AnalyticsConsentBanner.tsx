@@ -12,8 +12,8 @@ export function AnalyticsConsentBanner() {
   return (
     <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-3xl rounded-xl border border-border bg-surface/95 p-3 text-sm shadow-lg backdrop-blur sm:bottom-4 sm:flex sm:items-center sm:justify-between sm:gap-4">
       <p className="text-muted">
-        Lawplain can record anonymous, aggregate section engagement to highlight
-        popular passages. No user IDs or profiles.
+        APAC Regulation Tracker can record anonymous, aggregate section
+        engagement to highlight popular passages. No user IDs or profiles.
       </p>
       <div className="mt-3 flex shrink-0 gap-2 sm:mt-0">
         <button

@@ -7,7 +7,7 @@ import { buildMetadata } from "@/lib/seo";
 export const metadata: Metadata = buildMetadata({
   title: "Developers — API access",
   description:
-    "Create a personal API key to call the Lawplain corpus API from your own agents and scripts.",
+    "Create a personal API key to call the APAC Regulation Tracker corpus API from your own agents and scripts.",
   path: "/developers",
 });
 
@@ -32,8 +32,8 @@ export default function DevelopersPage() {
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
           Point your own agents and scripts at the same Singapore legal corpus
-          that powers Lawplain. Create a key below, then call the read-only API
-          with it.
+          that powers APAC Regulation Tracker. Create a key below, then call the
+          read-only API with it.
         </p>
       </header>
 

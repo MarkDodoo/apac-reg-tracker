@@ -137,7 +137,7 @@ export async function generateMetadata({
   } catch {
     return buildMetadata({
       title: decoded,
-      description: `Read ${decoded} on Lawplain's Singapore legal research corpus.`,
+      description: `Read ${decoded} on APAC Regulation Tracker's Singapore legal research corpus.`,
       path: `/statute/${encodeURIComponent(decoded)}`,
       type: "article",
       noIndex: hasQueryVariant,
@@ -246,7 +246,7 @@ export default async function StatutePage({
               className="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent-soft px-3.5 py-2 text-sm font-medium text-accent transition-colors hover:border-accent hover:bg-accent hover:text-primary-fg"
             >
               <SparkleIcon className="h-4 w-4" />
-              Ask Lawplain about this
+              Ask RegTracker about this
             </Link>
           </div>
         </header>
@@ -314,6 +314,6 @@ function statuteDescription(s: StatuteDetail, fallback: string): string {
   ].filter(Boolean);
 
   return metaDescription(
-    `Read ${title}${details.length > 0 ? ` (${details.join(", ")})` : ""}. Search Singapore statutes and subsidiary legislation on Lawplain.`,
+    `Read ${title}${details.length > 0 ? ` (${details.join(", ")})` : ""}. Search Singapore statutes and subsidiary legislation on APAC Regulation Tracker.`,
   );
 }

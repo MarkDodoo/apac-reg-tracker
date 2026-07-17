@@ -50,6 +50,20 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 
 ## Session Log
 
+### 2026-07-17 — Session 9: Rebrand + real README
+
+**Done:**
+- **Rebranded the web app** to APAC Regulation Tracker (wordmark "RegTracker." in nav/hero, full name in titles/metadata/footer). 24 files of user-visible copy changed: seo.ts (site name, title, description, keywords), homepage hero + tagline, footer (now credits the Lawplain foundation), auth screens, FAQ, welcome, "Ask RegTracker" throughout.
+- **Deliberately NOT renamed:** env var names (`LAWPLAIN_*`), internal headers (`x-lawplain-user-id`), cookie prefixes, `backend.lawplain.com` URLs, and the graff fallback agent — renaming internals breaks running systems for zero user-visible gain. Recorded here so nobody "finishes" the rename by accident.
+- **Replaced the root README** — the repo front page now describes this project (features, architecture diagram, stack, quickstart, status), with credit to lawplain; the upstream README is preserved at `docs/lawplain-upstream-README.md`.
+- Verified: typecheck + lint clean, homepage and Ask page render with new branding; only remaining "Lawplain" on-page is the intentional footer credit.
+
+**User decisions this session (from 2026-07-16 discussion):**
+- Streamlit dashboard is a workbench, not the product face — restyle/fold into Next.js in Phase 4.
+- PDPA/deployment: demo must not collect third-party personal data. Email alerts will be demonstrated with owner's address or a local fake SMTP inbox (e.g. Mailpit); public sign-up disabled or wiped for any deployed demo.
+
+**Next up:** point Search UI at our /v1/regulations backend; FinBERT bake-off; alerts.
+
 ### 2026-07-16 — Session 8: ASIC scraper, scheduler, RAG tuning
 
 **Done:**

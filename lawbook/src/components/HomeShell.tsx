@@ -57,7 +57,7 @@ export function HomeShell({
       />
 
       {/* Hero brand. On search it collapses away entirely — the sidebar/header
-          already shows "Lawplain.", so we avoid a duplicate. */}
+          already shows "RegTracker.", so we avoid a duplicate. */}
       <div
         aria-hidden={active}
         className={`overflow-hidden text-center transition-all ${ease} ${
@@ -65,10 +65,10 @@ export function HomeShell({
         }`}
       >
         <h1 className="font-serif text-5xl font-medium tracking-tight text-foreground sm:text-7xl">
-          Lawplain<span className="text-accent">.</span>
+          RegTracker<span className="text-accent">.</span>
         </h1>
         <p className="mt-3 text-sm font-semibold tracking-tight text-muted sm:text-base">
-          Search Singapore judgments, statutes, Hansard &amp; more
+          Regulatory intelligence for APAC financial markets
         </p>
       </div>
 

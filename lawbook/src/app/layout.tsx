@@ -62,7 +62,7 @@ export const metadata: Metadata = {
         url: OG_IMAGE,
         width: 1200,
         height: 630,
-        alt: "Lawplain Singapore legal research preview",
+        alt: "APAC Regulation Tracker preview",
       },
     ],
   },
@@ -120,8 +120,11 @@ function SiteFooter() {
         <p className="flex items-center gap-2.5">
           <BrandMark className="h-5 w-5" />
           <span>
-            <span className="font-semibold text-muted">Lawplain</span> — a
-            read-only projection of the Singapore legal corpus.
+            <span className="font-semibold text-muted">
+              APAC Regulation Tracker
+            </span>{" "}
+            — AI-monitored regulatory developments across Asia-Pacific. Built on
+            the open-source Lawplain foundation.
           </span>
         </p>
         <nav className="flex items-center gap-4">

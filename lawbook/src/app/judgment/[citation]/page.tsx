@@ -72,7 +72,7 @@ export async function generateMetadata({
   } catch {
     return buildMetadata({
       title: decoded,
-      description: `Read ${decoded} on Lawplain's Singapore legal research corpus.`,
+      description: `Read ${decoded} on APAC Regulation Tracker's Singapore legal research corpus.`,
       path: `/judgment/${encodeURIComponent(decoded)}`,
       type: "article",
       noIndex: hasQueryVariant,
@@ -244,7 +244,7 @@ export default async function JudgmentPage({
               className="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent-soft px-3.5 py-2 text-sm font-medium text-accent transition-colors hover:border-accent hover:bg-accent hover:text-primary-fg"
             >
               <SparkleIcon className="h-4 w-4" />
-              Ask Lawplain about this
+              Ask RegTracker about this
             </Link>
           </div>
         </header>
@@ -310,7 +310,7 @@ function judgmentDescription(j: JudgmentDetail, fallback: string): string {
       catchwords.length > 0
         ? `Topics include ${catchwords.slice(0, 3).join("; ")}. `
         : ""
-    }Search Singapore case law on Lawplain.`,
+    }Search Singapore case law on APAC Regulation Tracker.`,
   );
 }
 

@@ -1,109 +1,102 @@
-<p align="center">
-  <img src="lawplain.png" alt="Lawplain" width="640">
-</p>
+# APAC Regulation Tracker
 
-<h1 align="center">Lawplain</h1>
+AI-powered monitoring of regulatory developments across Asia-Pacific financial
+regulators — built for compliance officers and risk analysts at financial
+institutions and digital-asset businesses.
 
-<p align="center">
-  <strong>Plain-English search across Singapore law.</strong>
-</p>
+The system scrapes regulator publications daily, enriches every document with
+a locally-run LLM (summaries, category tags, Restrictive/Neutral/Facilitative
+sentiment, impact level), indexes them for semantic search, and answers
+plain-English questions with cited sources — all running on local, free
+infrastructure with no cloud LLM APIs.
 
-<p align="center">
-  Judgments, statutes, subsidiary legislation, Hansard, bills and practice
-  directions — one fast search box, plus an agent that reads the corpus and
-  writes a cited answer.<br/>
-  <strong>Ask a question. Get the law, with citations.</strong>
-</p>
+## What it does
 
-<p align="center">
-  <a href="https://lawplain.com"><img alt="lawplain.com" src="https://img.shields.io/badge/live-lawplain.com-1f6feb"></a>
-  <img alt="Next.js App Router" src="https://img.shields.io/badge/Next.js-App%20Router-000000?logo=nextdotjs&logoColor=white">
-  <img alt="Cloudflare Workers · D1 · Durable Objects" src="https://img.shields.io/badge/Cloudflare-Workers%20·%20D1%20·%20DO-f38020?logo=cloudflare&logoColor=white">
-  <img alt="SG legal corpus" src="https://img.shields.io/badge/corpus-judgments%20·%20statutes%20·%20Hansard-44cc11">
-</p>
+- **Multi-jurisdiction ingestion** — MAS (Singapore), HKMA (Hong Kong), and
+  ASIC (Australia) today; each regulator needed a different technique (official
+  API, sitemap + HTML scraping past a WAF, and a discovered newsroom JSON feed).
+- **Local LLM enrichment** — qwen2.5:7b via Ollama writes compliance-officer
+  summaries and classifies every document against a fixed taxonomy using
+  JSON-schema-constrained output.
+- **Regulatory sentiment** — each document scored Restrictive / Neutral /
+  Facilitative with an impact level, so a dashboard can answer "what changed
+  this week and how much does it matter?"
+- **Semantic search + cited Q&A** — ChromaDB vector index; retrieval-augmented
+  answers stream token-by-token into the web UI with numbered, linked citations.
+  The model is instructed to answer only from retrieved sources.
+- **Automated daily pipeline** — APScheduler chains ingest, text backfill,
+  enrichment, and embedding; per-record commits make every stage safely
+  resumable.
 
-<p align="center"><sub>Read-only legal <em>information</em>, not legal advice.</sub></p>
-
----
-
-## What is it?
-
-Lawplain is a research surface over the Singapore legal corpus. Two ways in:
-
-- **Search** — type a few words; full-text results (SQLite FTS5 + bm25) across
-  judgments, statutes, subsidiary legislation, Hansard, bills and practice
-  directions, served from a read-only Cloudflare D1 API with edge caching and
-  read replicas.
-- **Ask Lawplain** — ask in plain English (*"What must a plaintiff prove in a
-  defamation claim?"*). A [`graff`](https://github.com/justrach/codegraff) agent
-  runs real searches against the corpus, iterates over results, and streams back
-  a **cited** answer — each thread saved at its own `/ask/[id]` URL you can
-  return to.
-
-> **Not a lawyer?** That's fine. Ask in plain words; Lawplain finds the cases and
-> sections and tells you what they say. It cites everything and won't fabricate.
-
----
-
-## How it fits together
+## Architecture
 
 ```
-        ┌─ Search ─▶ sgjudge API  (Cloudflare Worker + D1 / FTS5)
-browser ┤                edge cache · read replicas (D1 Sessions API)
-        └─ Ask ───▶ /api/ask ─▶ graff agent  (hosted in a Durable Object)
-                         │  bash + curl ▶ backend.lawplain.com
-                         ▼
-                 Server-Sent Events ─▶ streaming, cited answer
+                                 pipeline/  (Python)
+  MAS  ─ sitemap + HTML  ─┐
+  HKMA ─ official API    ─┼─ ingest ─ SQLite/Postgres ─ enrich (Ollama qwen2.5)
+  ASIC ─ newsroom JSON   ─┘              │                    │
+                                         │              ChromaDB embeddings
+                                         │                    │
+                                    FastAPI  ── /v1/regulations · search ·
+                                         │      semantic-search · ask · stream
+        lawbook/  (Next.js) ─────────────┤
+        Ask UI (SSE streaming, cited answers, background runs)
+        Streamlit dashboard (sentiment, categories, timeline)
 ```
-
-- **Frontend** — Next.js (App Router) on Cloudflare Workers via OpenNext.
-  Source and full setup in [`lawbook/`](lawbook/README.md).
-- **Backend** — `sgjudge`, a read-only REST API over Cloudflare D1 + FTS5 at
-  `backend.lawplain.com`.
-- **Agent** — `graff` (codegraff) drives the corpus as its tool surface; long
-  runs live in a Durable Object so you can navigate away and come back to a
-  finished answer.
-
----
 
 ## Stack
 
-| Layer | Tech |
-| --- | --- |
-| UI | Next.js App Router · React Server Components |
-| Runtime | Cloudflare Workers (OpenNext) · Durable Objects · KV |
-| Auth | Better Auth (username / password) on D1 |
-| Search | sgjudge REST API · Cloudflare D1 · SQLite FTS5 + bm25 |
-| Agent | `graff` / `@codegraff/sdk` · Server-Sent Events |
+| Layer | Choice |
+|---|---|
+| Data pipeline & API | Python, FastAPI, SQLAlchemy, httpx, BeautifulSoup |
+| Storage | SQLite (dev) / PostgreSQL-ready, ChromaDB vector store |
+| LLM | Ollama (qwen2.5:7b), all local — no cloud APIs |
+| Web app | Next.js App Router (TypeScript), Server-Sent Events streaming |
+| Dashboard | Streamlit + Altair |
+| Auth | Better Auth + Cloudflare D1 |
+| Scheduling | APScheduler |
 
----
+## Quickstart
 
-## Local development
+Backend (Python 3.12+, [Ollama](https://ollama.com) with `qwen2.5:7b` pulled):
 
-```sh
-cd lawbook
-npm install
-npm run dev          # http://localhost:3000
+```bash
+cd pipeline
+python -m venv .venv && .venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\python -m app.scheduler --once      # ingest + enrich + embed
+.venv\Scripts\uvicorn app.main:app --port 8000    # API at /docs
+.venv\Scripts\streamlit run dashboard.py          # dashboard at :8501
 ```
 
-Full setup — the Ask agent (`graff` install + a model key), Better Auth, and the
-D1 migrations — lives in **[lawbook/README.md](lawbook/README.md)**.
+Web app (Node 20+):
 
-Deploy to Cloudflare:
-
-```sh
+```bash
 cd lawbook
-npm run cf:build && npm run cf:deploy
+cp .env.example .env    # set BETTER_AUTH_SECRET; keep REG_TRACKER_API_URL
+npm install --legacy-peer-deps
+npm run d1:migrate:local
+npm run dev             # app at :3000 — sign up, then use Ask
 ```
 
-`cf:deploy` applies pending production D1 migrations before deploying the Worker,
-so application code and the database schema stay in sync.
+Details in [pipeline/README.md](pipeline/README.md). Progress, decisions, and
+session history in [PROJECT_LOG.md](PROJECT_LOG.md).
 
----
+## Status
 
-## Legal
+Working now: three regulators ingested (136+ documents), full LLM enrichment,
+semantic search, cited streaming Q&A in the web UI, dashboard, daily scheduler.
+In progress: FinBERT sentiment comparison, in-app regulatory search, alerts,
+recommender. See [PROJECT_LOG.md](PROJECT_LOG.md) for the live roadmap.
 
-Lawplain provides read-only legal **information**, not legal advice. The Ask
-agent is instructed to cite its sources and to never fabricate citations or
-section numbers; if the corpus does not contain the answer, it says so. Always
-verify against the primary source before relying on anything here.
+## Credits
+
+Built on a fork of [Lawplain](https://github.com/yxlyx/lawplain), an
+open-source Singapore legal research tool — its Next.js frontend, auth, and
+SSE streaming patterns form the foundation of the web app (original README
+preserved at [docs/lawplain-upstream-README.md](docs/lawplain-upstream-README.md)).
+The data pipeline, LLM enrichment, vector search, RAG backend, dashboard, and
+scheduler are new work.
+
+This project provides regulatory information, not legal advice.
+
+Maintained by Mark Dodoo.
