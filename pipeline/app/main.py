@@ -121,6 +121,8 @@ class SemanticHit(BaseModel):
     sentiment_label: str
     impact_level: str
     relevance: float
+    summary: str | None = None
+    doc_type: str | None = None
 
 
 class SemanticResponse(BaseModel):
@@ -138,6 +140,17 @@ def semantic_search_endpoint(
     from app.rag import semantic_search
 
     hits = semantic_search(q, limit=limit)
+    # Chroma metadata doesn't carry summaries; hydrate them from the DB so
+    # search cards look the same in both modes.
+    with SessionLocal() as session:
+        summaries = {
+            r.id: (r.summary, r.doc_type)
+            for r in session.scalars(
+                select(Regulation).where(
+                    Regulation.id.in_([h["id"] for h in hits])
+                )
+            )
+        }
     return SemanticResponse(
         query=q,
         results=[
@@ -146,6 +159,8 @@ def semantic_search_endpoint(
                 published_date=h["published_date"],
                 sentiment_label=h["sentiment_label"],
                 impact_level=h["impact_level"], relevance=h["relevance"],
+                summary=summaries.get(h["id"], (None, None))[0],
+                doc_type=summaries.get(h["id"], (None, None))[1],
             )
             for h in hits
         ],

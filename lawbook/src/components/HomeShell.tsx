@@ -2,7 +2,7 @@
 
 import { type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
 import { useChrome } from "@/components/chrome/ChromeContext";
-import { SearchExplorer } from "@/components/SearchExplorer";
+import { RegSearch } from "@/components/RegSearch";
 
 // useLayoutEffect on the client, useEffect on the server (avoids the SSR warning).
 const useIsoLayoutEffect =
@@ -16,13 +16,9 @@ const useIsoLayoutEffect =
  * Mobile-safe: viewport-relative spacer and responsive type sizes.
  */
 export function HomeShell({
-  courts,
-  initialTab,
   initialQuery,
   stats,
 }: {
-  courts: string[];
-  initialTab: string;
   initialQuery: string;
   stats?: ReactNode;
 }) {
@@ -72,12 +68,7 @@ export function HomeShell({
         </p>
       </div>
 
-      <SearchExplorer
-        courts={courts}
-        initialTab={initialTab}
-        initialQuery={initialQuery}
-        onActiveChange={setSearchActive}
-      />
+      <RegSearch initialQuery={initialQuery} onActiveChange={setSearchActive} />
 
       {stats && (
         <div

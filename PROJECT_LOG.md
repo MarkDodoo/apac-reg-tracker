@@ -50,6 +50,20 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 
 ## Session Log
 
+### 2026-07-17 — Session 10: Homepage search swapped to our backend
+
+**Done:**
+- `lawbook/src/app/api/regulations/route.ts`: server-side proxy to the pipeline API (list / keyword / semantic) — keeps the backend URL private and avoids CORS. No auth: the corpus is public data.
+- `lawbook/src/components/RegSearch.tsx`: new homepage search — keyword/semantic mode toggle, source filter chips (MAS/HKMA/ASIC), result cards with sentiment dot (same CVD-safe colors as the dashboard), impact, LLM summary, and external link to the regulator's page.
+- Homepage (`page.tsx`/`HomeShell.tsx`) rewired: stats line now reads from our `/v1/stats`; the legal-corpus SearchExplorer is no longer used on the homepage.
+- Semantic search endpoint now hydrates summaries/doc_type from the DB so both search modes render identical cards.
+- **The app's two core surfaces (Search + Ask) now run entirely on our backend.** Lawplain's hosted API is still used only by the legacy legal document pages (/judgment, /statute, /document) — retained but unlinked; can be deleted in a cleanup pass.
+- Verified end-to-end through the Next.js proxy: keyword "stablecoin" (1 hit), semantic "rules for crypto companies" (relevant ASIC/MAS hits with summaries), homepage renders our corpus stats.
+
+**Note:** uvicorn `--reload` did not detect file changes on this Windows setup — restart the API manually after backend edits.
+
+**Next up:** FinBERT bake-off; alerts (Mailpit demo); legacy legal-page cleanup.
+
 ### 2026-07-17 — Session 9: Rebrand + real README
 
 **Done:**
