@@ -61,6 +61,20 @@ title + summary, so enrich first).
 | MAS media releases | Sitemap + HTML scraper (no RSS/API exists) | Done |
 | ASIC newsroom | Public newsroom-all.json (~6,800 items) + page fetch | Done |
 
+## Email alerts (demo-safe)
+
+Alerts never touch the internet: SMTP defaults to localhost:1025, where
+[Mailpit](https://mailpit.axllent.org) (`winget install axllent.Mailpit`,
+then run `mailpit`) catches everything in a browser inbox at
+http://localhost:8025.
+
+```bash
+.venv\Scripts\python -m app.alerts --seed-demo   # one-time demo subscription
+.venv\Scripts\python -m app.alerts               # send pending digests
+```
+
+The scheduler also runs alerts after each daily pipeline pass.
+
 ## Automated daily runs
 
 ```bash

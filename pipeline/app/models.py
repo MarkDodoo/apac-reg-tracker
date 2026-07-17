@@ -17,6 +17,33 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class AlertSubscription(Base):
+    """Who gets alerted about what. Demo-scale: seeded via `python -m
+    app.alerts --seed-demo`; a real sign-up flow is Phase 3 (and a PDPA
+    decision — see PROJECT_LOG). Empty filter lists mean "any"."""
+
+    __tablename__ = "alert_subscriptions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(100))
+    min_impact: Mapped[str] = mapped_column(String(10), default="High")
+    jurisdictions: Mapped[list | None] = mapped_column(JSON)  # [] = all
+    categories: Mapped[list | None] = mapped_column(JSON)  # [] = all
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class AlertLog(Base):
+    """One row per (subscription, document) already alerted — dedupe."""
+
+    __tablename__ = "alert_log"
+
+    subscription_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    regulation_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    sent_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 class Regulation(Base):
     __tablename__ = "regulations"
 

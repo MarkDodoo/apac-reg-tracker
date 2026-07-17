@@ -17,6 +17,7 @@ from datetime import datetime
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 
+from app.alerts import send_alerts
 from app.db import init_db
 from app.embed import index
 from app.enrich import enrich
@@ -58,6 +59,13 @@ def run_pipeline() -> None:
         index(reindex=False)
     except Exception as err:
         print(f"Embedding FAILED — {err}")
+
+    try:
+        # Local Mailpit inbox by default (SMTP_HOST/SMTP_PORT); skipping is
+        # normal when no SMTP is running.
+        send_alerts()
+    except Exception as err:
+        print(f"Alerts FAILED — {err}")
 
     print(f"=== Done in {(datetime.now() - started).seconds // 60} min ===")
 

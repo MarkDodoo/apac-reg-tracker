@@ -51,6 +51,17 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 
 ## Session Log
 
+### 2026-07-17 — Session 12: Email alerts (Phase 3 begins)
+
+**Done:**
+- New models: `AlertSubscription` (email, min impact, jurisdiction/category filters; empty = all) and `AlertLog` (per subscriber+document dedupe).
+- `app/alerts.py`: matches enriched documents against each active subscription, sends one plain-text+HTML digest per subscriber per run, logs sends so nothing is ever re-sent. `--seed-demo` creates the demo subscriber (fictional address), `--dry-run` previews.
+- **PDPA posture implemented as designed (Session 9):** SMTP defaults to localhost:1025 → Mailpit (installed via winget) catches all mail in a local browser inbox at http://localhost:8025. No real email can be sent without deliberately reconfiguring SMTP_HOST.
+- Alerts wired into the daily scheduler as an isolated stage.
+- **Verified end-to-end:** demo subscription (High impact, all jurisdictions) matched 42 documents; digest landed in Mailpit; re-run sent nothing (dedupe confirmed).
+
+**Next up:** recommender (Phase 3); subscription management UI (deferred — currently CLI-seeded); legacy legal-page cleanup.
+
 ### 2026-07-17 — Session 11: FinBERT bake-off (Phase 1 fully complete)
 
 **Done:**
