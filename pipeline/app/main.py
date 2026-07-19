@@ -197,6 +197,45 @@ def ask_endpoint(
     return AskResponse(question=q, **result)
 
 
+@app.get("/v1/regulations/{reg_id}/related", response_model=SemanticResponse)
+def related_endpoint(reg_id: str, limit: int = Query(5, ge=1, le=20)):
+    """Documents most similar to this one (embedding nearest neighbours)."""
+    from app.recommend import related
+
+    hits = related(reg_id, limit=limit)
+    return SemanticResponse(
+        query=reg_id,
+        results=[
+            SemanticHit(
+                id=h["id"], title=h["title"], source=h["source"], url=h["url"],
+                published_date=h["published_date"],
+                sentiment_label=h["sentiment_label"],
+                impact_level=h["impact_level"], relevance=h["relevance"],
+            )
+            for h in hits
+        ],
+    )
+
+
+@app.get("/v1/recommendations")
+def recommendations_endpoint(
+    jurisdictions: str | None = Query(
+        None, description="comma-separated, e.g. Singapore,Hong Kong"
+    ),
+    categories: str | None = Query(
+        None, description="comma-separated, e.g. Crypto/Digital Assets,Banking"
+    ),
+    limit: int = Query(10, ge=1, le=50),
+) -> dict:
+    """Content-based ranking for a user profile: category overlap +
+    jurisdiction match + impact + recency (formula in app/recommend.py)."""
+    from app.recommend import recommend
+
+    parse = lambda v: [s.strip() for s in v.split(",") if s.strip()] if v else []
+    results = recommend(parse(jurisdictions), parse(categories), limit=limit)
+    return {"count": len(results), "results": results}
+
+
 @app.get("/v1/ask/stream")
 def ask_stream_endpoint(
     q: str = Query(..., min_length=5),

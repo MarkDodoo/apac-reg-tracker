@@ -46,6 +46,47 @@ function formatDate(value: string | null): string {
   });
 }
 
+function HitCard({ h }: { h: RegHit }) {
+  const href = h.source_url ?? h.url ?? "#";
+  return (
+    <li className="rounded-xl border border-border bg-surface p-4 transition-colors hover:border-border-strong">
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="text-[15px] font-semibold leading-snug text-foreground hover:underline"
+      >
+        {h.title}
+      </a>
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+        <span className="font-semibold text-muted">{h.source}</span>
+        {h.published_date && <span>{formatDate(h.published_date)}</span>}
+        {h.doc_type && <span>{h.doc_type}</span>}
+        {h.sentiment_label && (
+          <span className="flex items-center gap-1.5">
+            <span
+              aria-hidden
+              className={`inline-block h-2 w-2 rounded-full ${
+                SENTIMENT_DOT[h.sentiment_label] ?? "bg-border"
+              }`}
+            />
+            {h.sentiment_label}
+          </span>
+        )}
+        {h.impact_level && <span>{h.impact_level} impact</span>}
+        {typeof h.relevance === "number" && (
+          <span className="tabular-nums">
+            {(h.relevance * 100).toFixed(0)}% match
+          </span>
+        )}
+      </div>
+      {h.summary && (
+        <p className="mt-2 text-sm leading-relaxed text-muted">{h.summary}</p>
+      )}
+    </li>
+  );
+}
+
 export function RegSearch({
   initialQuery,
   onActiveChange,
@@ -57,6 +98,7 @@ export function RegSearch({
   const [mode, setMode] = useState<"keyword" | "semantic">("keyword");
   const [source, setSource] = useState<(typeof SOURCES)[number]>("All");
   const [hits, setHits] = useState<RegHit[] | null>(null);
+  const [latest, setLatest] = useState<RegHit[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestSeq = useRef(0);
@@ -107,6 +149,23 @@ export function RegSearch({
   useEffect(() => {
     if (initialQuery.trim()) runSearch(initialQuery, "keyword", "All");
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Latest-developments feed for the idle homepage, so the app opens with
+  // content rather than an empty search box.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/regulations?limit=8")
+      .then((r) =>
+        r.ok ? (r.json() as Promise<{ results?: RegHit[] }>) : null,
+      )
+      .then((d) => {
+        if (!cancelled && d?.results) setLatest(d.results);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const submit = (e?: { preventDefault: () => void }) => {
@@ -194,54 +253,22 @@ export function RegSearch({
         )}
         {hits && !loading && hits.length > 0 && (
           <ul className="flex flex-col gap-3">
-            {hits.map((h) => {
-              const href = h.source_url ?? h.url ?? "#";
-              return (
-                <li
-                  key={h.id}
-                  className="rounded-xl border border-border bg-surface p-4 transition-colors hover:border-border-strong"
-                >
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[15px] font-semibold leading-snug text-foreground hover:underline"
-                  >
-                    {h.title}
-                  </a>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-                    <span className="font-semibold text-muted">{h.source}</span>
-                    {h.published_date && (
-                      <span>{formatDate(h.published_date)}</span>
-                    )}
-                    {h.doc_type && <span>{h.doc_type}</span>}
-                    {h.sentiment_label && (
-                      <span className="flex items-center gap-1.5">
-                        <span
-                          aria-hidden
-                          className={`inline-block h-2 w-2 rounded-full ${
-                            SENTIMENT_DOT[h.sentiment_label] ?? "bg-border"
-                          }`}
-                        />
-                        {h.sentiment_label}
-                      </span>
-                    )}
-                    {h.impact_level && <span>{h.impact_level} impact</span>}
-                    {typeof h.relevance === "number" && (
-                      <span className="tabular-nums">
-                        {(h.relevance * 100).toFixed(0)}% match
-                      </span>
-                    )}
-                  </div>
-                  {h.summary && (
-                    <p className="mt-2 text-sm leading-relaxed text-muted">
-                      {h.summary}
-                    </p>
-                  )}
-                </li>
-              );
-            })}
+            {hits.map((h) => (
+              <HitCard key={h.id} h={h} />
+            ))}
           </ul>
+        )}
+        {!hits && !loading && !error && latest && latest.length > 0 && (
+          <div>
+            <h2 className="mb-2.5 px-1 text-xs font-semibold uppercase tracking-wide text-muted-2">
+              Latest developments
+            </h2>
+            <ul className="flex flex-col gap-3">
+              {latest.map((h) => (
+                <HitCard key={h.id} h={h} />
+              ))}
+            </ul>
+          </div>
         )}
       </div>
     </div>

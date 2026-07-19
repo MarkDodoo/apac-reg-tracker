@@ -51,6 +51,19 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 
 ## Session Log
 
+### 2026-07-19 — Session 13: Recommender, homepage feed, corpus deepening
+
+**Context:** user feedback — "the platform feels a little bit empty."
+
+**Done:**
+- **Homepage "Latest developments" feed**: the idle homepage now shows the 8 newest documents as cards (shared `HitCard` component with search results) instead of just a search box.
+- **Recommender** (`app/recommend.py`, Phase 3 item):
+  - `GET /v1/recommendations?jurisdictions=&categories=` — content-based profile scoring: 2.0*category_overlap + 1.5*jurisdiction_match + impact weight + 90-day recency decay. Transparent weights, no user tracking (consistent with PDPA posture). Verified: a Hong Kong + Crypto/Fintech profile ranks the FSTB/HKMA DLT review first (4.28 vs 3.39 next).
+  - `GET /v1/regulations/{id}/related` — embedding nearest neighbours. **Works but quality is embedder-limited** (returned ASIC penalties for the DLT doc); same MiniLM small-corpus issue as Session 8, same upgrade path (nomic-embed-text).
+- **Corpus deepening backfill started** (background, hours): HKMA to ~120, MAS to ~40, ASIC to ~80 + full enrich/embed/alerts. Future daily scheduler runs keep topping up.
+
+**Ideas backlog from the "feels empty" discussion** (not yet built): in-app trends page (port dashboard charts), internal document detail pages with pinned-context Ask + related docs, LLM-written weekly regulatory briefing page, RBI + FSC Korea scrapers.
+
 ### 2026-07-17 — Session 12: Email alerts (Phase 3 begins)
 
 **Done:**
