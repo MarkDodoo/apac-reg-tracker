@@ -64,9 +64,15 @@ title + summary, so enrich first).
 ## Email alerts (demo-safe)
 
 Alerts never touch the internet: SMTP defaults to localhost:1025, where
-[Mailpit](https://mailpit.axllent.org) (`winget install axllent.Mailpit`,
-then run `mailpit`) catches everything in a browser inbox at
-http://localhost:8025.
+[Mailpit](https://mailpit.axllent.org) (`winget install axllent.Mailpit`)
+catches everything in a browser inbox at http://localhost:8025.
+
+Always start Mailpit with a persistent mailbox, or messages vanish on
+restart (its default database is a temp file):
+
+```bash
+mailpit --database data/mailpit.db
+```
 
 ```bash
 .venv\Scripts\python -m app.alerts --seed-demo   # one-time demo subscription
