@@ -9,7 +9,6 @@ retrieval suits small local models far better.
 import os
 from datetime import date
 
-import ollama
 from sqlalchemy import select
 
 from app.db import SessionLocal
@@ -176,6 +175,8 @@ def ask(question: str, k: int = 5) -> dict:
             "sources": sources,
         }
 
+    import ollama  # lazy: not installed in the deploy image (LLM_PROVIDER=openai)
+
     resp = ollama.chat(
         model=ANSWER_MODEL,
         messages=_answer_messages(question, context_blocks),
@@ -237,6 +238,8 @@ def ask_stream(question: str, k: int = 5):
                 parts.append(text)
                 yield {"type": "delta", "text": text}
     else:
+        import ollama  # lazy: not installed in the deploy image (LLM_PROVIDER=openai)
+
         stream = ollama.chat(
             model=ANSWER_MODEL,
             messages=_answer_messages(question, context_blocks),
