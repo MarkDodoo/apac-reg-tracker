@@ -1,0 +1,9 @@
+# Slim dependency set for the deployed API container (Render).
+# Excludes scraping/scheduling/dashboard/eval deps not needed to *serve* the
+# precomputed corpus — see pipeline/requirements.txt for full local dev deps.
+fastapi
+uvicorn[standard]
+sqlalchemy
+chromadb
+openai
+python-dotenv

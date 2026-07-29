@@ -9,3 +9,5 @@ pandas
 altair
 chromadb
 apscheduler
+openai
+python-dotenv

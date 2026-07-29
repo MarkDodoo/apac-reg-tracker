@@ -17,6 +17,16 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class AskUsage(Base):
+    """One row per calendar day, counting paid-provider Ask calls only —
+    the spending guard in app/rag.py (Ollama calls are free, uncounted)."""
+
+    __tablename__ = "ask_usage"
+
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    count: Mapped[int] = mapped_column(default=0)
+
+
 class AlertSubscription(Base):
     """Who gets alerted about what. Demo-scale: seeded via `python -m
     app.alerts --seed-demo`; a real sign-up flow is Phase 3 (and a PDPA

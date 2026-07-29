@@ -213,13 +213,16 @@ export async function POST(req: Request): Promise<Response> {
     }
   }
 
-  if (production && (!useSandbox || !askRuns || !runId)) {
+  // The CubeSandbox/DO requirement below exists to sandbox the graff agent's
+  // yolo-bash tool. Our reg-agent backend makes a plain server-side HTTP call
+  // to our own FastAPI — nothing to sandbox — so it's exempt from this gate.
+  if (production && !regAgentEnabled() && (!useSandbox || !askRuns || !runId)) {
     console.error("Production Ask requires CubeSandbox, ASK_RUN_DO, and runId");
     return errorStream(safeAgentError());
   }
 
   // DO mode — host the run in AskRunDO so it survives navigation.
-  if (useSandbox && askRuns && runId) {
+  if (useSandbox && askRuns && runId && !(regAgentEnabled() && production)) {
     try {
       const stub = askRuns.get(
         askRuns.idFromName(userRunName(session.user.id, runId)),
@@ -257,7 +260,15 @@ export async function POST(req: Request): Promise<Response> {
   // client disconnect/navigation only detaches the SSE reader. This is not as
   // durable as the Cloudflare DO path (it won't survive process restarts or
   // multi-instance routing), but it fixes background runs for next dev/start.
-  if (runId) {
+  // Skipped for the reg-agent IN PRODUCTION ONLY: this relies on an
+  // in-memory Map surviving across requests, which a persistent Node
+  // process (local dev) provides but Cloudflare Workers isolates don't
+  // guarantee. Locally this path still runs and was verified to support
+  // reconnect (`from`) correctly; in production we fall through to the
+  // simpler request-scoped stream below, which OpenAI's speed (seconds,
+  // not minutes) makes an acceptable trade — no resume-after-navigation,
+  // but no reliance on isolate lifetime either.
+  if (runId && !(regAgentEnabled() && production)) {
     if (from > 0 && !hasMemoryAskRun(session.user.id, runId)) {
       return errorStream(
         "This research run is no longer available on the server; please start it again.",
