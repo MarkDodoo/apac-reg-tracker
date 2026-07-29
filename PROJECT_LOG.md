@@ -10,7 +10,7 @@ A living record of everything done on this project: decisions made, work complet
 
 ## Current Status
 
-**LIVE:** https://apac-reg-tracker.markirrzo.workers.dev (frontend, Cloudflare Workers) · API at https://apac-reg-tracker.onrender.com (backend, Render). Deployed 2026-07-29.
+**LIVE:** https://apac-reg-tracker.markirrzo.workers.dev (frontend, Cloudflare Workers) · API at https://apac-reg-tracker.onrender.com (backend, Render). Deployed 2026-07-29. **Self-refreshing daily** — see Decision #8; no local machine or manual steps required to keep it current.
 
 **Phase 1 — Foundation: COMPLETE (2026-07-15, ~2 weeks ahead of the week-4 target)** — except the ASIC scraper and FinBERT bake-off, tracked below.
 
@@ -39,6 +39,8 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 | 4 | 2026-07-13 | **Deployed demo serves precomputed summaries/sentiment; live LLM Q&A demoed locally.** **Refined by Decision #7** — the corpus/summaries/sentiment part held (precomputed snapshot), but live Q&A turned out feasible via a cheap cloud model instead of staying local-only. | A €4 VPS can't run qwen3:4b at usable speed. Overnight local batches → push results to the hosted DB. |
 | 5 | 2026-07-13 | **SQLite for dev, via SQLAlchemy with portable column types (JSON, not ARRAY).** | Zero-install local dev; switching to Supabase Postgres later is just setting `DATABASE_URL`. The brief's Postgres schema is preserved field-for-field in `pipeline/app/models.py`. |
 | 6 | 2026-07-14 | **Batch enrichment uses qwen2.5:7b for both tagging and summaries**, not the brief's 3b/qwen3:4b split. | Measured: qwen3:4b leaks reasoning text into summaries (think=False ineffective on Ollama 0.30.10); qwen2.5:3b mislabelled 2/3 scam alerts Restrictive/High vs 7b's 3/3 Neutral/Low. 3b stays as the candidate for future *real-time* tagging; models overridable via `TAG_MODEL`/`SUMMARY_MODEL` env vars. |
+| 7 | 2026-07-29 | **Deployed Ask/enrichment uses OpenAI (gpt-4o-mini) via an `LLM_PROVIDER` switch**, scoped strictly to the hosted/automated environment — every local setup still defaults to free Ollama. | Free hosts (Render) have no GPU to run Ollama. Narrow, deliberate exception to the brief's "avoid paid APIs" rule. Guardrails: daily `AskUsage` call cap (code-level) + a hard spending cap the user set on the OpenAI account itself (platform-level). Measured cost: ~$0.0007/Ask query — $15 credit covers ~20,000 queries. |
+| 8 | 2026-07-29 | **A daily GitHub Action (not a local cron/scheduler) keeps the live deployment's corpus current**, committing a refreshed `pipeline/deploy_data` snapshot that Render auto-redeploys on. | The user wants the live link to stay current without depending on their own machine being on (e.g. when sharing with Xhoni). Reuses the OpenAI provider from Decision #7 — Actions runners have no GPU either. Verified: first run added 61 new documents (HKMA 21, MAS 15, ASIC 25) in under 3 minutes, corpus 312→373, live site updated automatically. |
 
 ---
 
@@ -52,6 +54,18 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 ---
 
 ## Session Log
+
+### 2026-07-29 — Session 15: Automated daily corpus refresh
+
+**Trigger:** user asked whether the "Latest developments" feed on the live site was current — it wasn't (frozen at the 2026-07-17 snapshot baked in during Session 14). Asked how to fix it "even when I send it to Xhoni" — i.e. wanted it to genuinely take care of itself, not a manual chore.
+
+**Done:**
+- `app/enrich.py` gained the same `LLM_PROVIDER` switch as `rag.py` (Decision #7 extended to enrichment, not just Ask): `openai` path uses gpt-4o-mini with strict JSON-schema structured output for tagging, plain completion for summaries. Tested locally first (2 real docs, correct categories/entities/summary) before trusting it unattended. Notably ~6s/doc vs Ollama's ~50s/doc — automation runs are fast.
+- New `.github/workflows/refresh-corpus.yml` (Decision #8): daily cron (06:00 SGT) + manual `workflow_dispatch`. Runs `python -m app.scheduler --once` (reused as-is — already has the right per-source failure isolation) against `pipeline/deploy_data` directly via `DATABASE_URL`/`CHROMA_DIR` env overrides, then commits and pushes the refreshed snapshot. Render is repo-connected and auto-redeploys on that push — closes the loop with zero involvement from any local machine.
+- Two GitHub repo settings needed for this to work (both completed via `gh` CLI, no browser/user action needed since the session already had an authenticated `gh` with `workflow` scope): Actions default workflow permissions read→write (so the job's `git push` succeeds), and the `OPENAI_API_KEY` repo secret (piped directly from the local `.env` file into `gh secret set`, never typed or displayed).
+- **Verified with a real run, start to finish:** triggered manually, completed in 2m54s, found 61 new documents (HKMA 21, MAS 15, ASIC 25), enriched and embedded them, committed, pushed. Render auto-redeployed within ~20s of the push. Live corpus: 312 → 373. Newest live document now dated the day before the run (vs. 12 days stale before this session).
+
+**Ongoing cost:** trivially small — enrichment + embedding of a daily trickle of new documents via gpt-4o-mini, well inside the existing $15/Decision #7 budget alongside Ask usage.
 
 ### 2026-07-29 — Session 14: Live deployment (Cloudflare + Render)
 
