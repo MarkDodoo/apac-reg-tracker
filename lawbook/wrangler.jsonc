@@ -11,18 +11,16 @@
   // No custom domain (lawplain.com belonged to the upstream project) — this
   // deploys to the free *.workers.dev subdomain instead.
   "vars": {
-    // BETTER_AUTH_URL / LAWPLAIN_PUBLIC_HOST are placeholders updated after
-    // the first deploy reveals the actual workers.dev URL (see PROJECT_LOG).
-    "BETTER_AUTH_URL": "https://apac-reg-tracker.workers.dev",
+    "BETTER_AUTH_URL": "https://apac-reg-tracker.markirrzo.workers.dev",
     "LAWPLAIN_ASK_AGENT_ENABLED": "true",
-    "LAWPLAIN_PUBLIC_HOST": "apac-reg-tracker.workers.dev",
+    "LAWPLAIN_PUBLIC_HOST": "apac-reg-tracker.markirrzo.workers.dev",
     "LAWPLAIN_AGENT_CREDENTIAL": "CODEGRAFF_API_KEY",
-    "REG_TRACKER_API_URL": "PLACEHOLDER_SET_AFTER_RENDER_DEPLOY"
+    "REG_TRACKER_API_URL": "https://apac-reg-tracker.onrender.com"
   },
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
-      "service": "lawbook"
+      "service": "apac-reg-tracker"
     }
   ],
   "durable_objects": {

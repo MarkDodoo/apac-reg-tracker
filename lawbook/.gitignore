@@ -48,5 +48,3 @@ harness.trace.jsonl
 harness.trajectory.jsonl
 last.session.json
 
-# npm lockfile (this repo uses bun.lock)
-package-lock.json

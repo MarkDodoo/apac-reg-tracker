@@ -10,6 +10,8 @@ A living record of everything done on this project: decisions made, work complet
 
 ## Current Status
 
+**LIVE:** https://apac-reg-tracker.markirrzo.workers.dev (frontend, Cloudflare Workers) · API at https://apac-reg-tracker.onrender.com (backend, Render). Deployed 2026-07-29.
+
 **Phase 1 — Foundation: COMPLETE (2026-07-15, ~2 weeks ahead of the week-4 target)** — except the ASIC scraper and FinBERT bake-off, tracked below.
 
 | Milestone | Status |
@@ -33,8 +35,8 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 |---|---|---|---|
 | 1 | 2026-07-13 | **Replace the graff agent with plain RAG, not port it to Ollama.** | The lawplain "Ask" agent works by letting the LLM run `curl` commands in a sandbox (agentic tool-calling loop). Small local models (qwen3:4b) are unreliable at multi-step tool use. A retrieve-then-answer RAG pipeline (ChromaDB → prompt → stream) is simpler, more reliable, and keeps the nice streaming UI. |
 | 2 | 2026-07-13 | **Our FastAPI backend replaces backend.lawplain.com entirely.** | The lawplain corpus is NOT in the repo — all search hits the original author's hosted API (`src/lib/sgjudge.ts`). Our backend will serve similar-shaped endpoints (e.g. `/v1/regulations/search`) so the frontend patterns transfer over. |
-| 3 | 2026-07-13 | **Deployment: keep Next.js on Cloudflare (free), host FastAPI separately (Render/Hetzner).** Tentative — revisit at Phase 4. | The repo is built for Cloudflare Workers (D1 auth, Durable Objects). Python can't run on Workers. Splitting the two is the least rework. |
-| 4 | 2026-07-13 | **Deployed demo serves precomputed summaries/sentiment; live LLM Q&A demoed locally.** | A €4 VPS can't run qwen3:4b at usable speed. Overnight local batches → push results to the hosted DB. |
+| 3 | 2026-07-13 | **Deployment: keep Next.js on Cloudflare (free), host FastAPI separately (Render/Hetzner).** **Executed 2026-07-29** — live at the URLs in Current Status. | The repo is built for Cloudflare Workers (D1 auth, Durable Objects). Python can't run on Workers. Splitting the two is the least rework. |
+| 4 | 2026-07-13 | **Deployed demo serves precomputed summaries/sentiment; live LLM Q&A demoed locally.** **Refined by Decision #7** — the corpus/summaries/sentiment part held (precomputed snapshot), but live Q&A turned out feasible via a cheap cloud model instead of staying local-only. | A €4 VPS can't run qwen3:4b at usable speed. Overnight local batches → push results to the hosted DB. |
 | 5 | 2026-07-13 | **SQLite for dev, via SQLAlchemy with portable column types (JSON, not ARRAY).** | Zero-install local dev; switching to Supabase Postgres later is just setting `DATABASE_URL`. The brief's Postgres schema is preserved field-for-field in `pipeline/app/models.py`. |
 | 6 | 2026-07-14 | **Batch enrichment uses qwen2.5:7b for both tagging and summaries**, not the brief's 3b/qwen3:4b split. | Measured: qwen3:4b leaks reasoning text into summaries (think=False ineffective on Ollama 0.30.10); qwen2.5:3b mislabelled 2/3 scam alerts Restrictive/High vs 7b's 3/3 Neutral/Low. 3b stays as the candidate for future *real-time* tagging; models overridable via `TAG_MODEL`/`SUMMARY_MODEL` env vars. |
 
@@ -50,6 +52,29 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 ---
 
 ## Session Log
+
+### 2026-07-29 — Session 14: Live deployment (Cloudflare + Render)
+
+**The site is live.** Frontend on Cloudflare Workers, backend on Render, both on free tiers, both under the user's own accounts.
+
+**Decision #7 — deployed Ask uses OpenAI (gpt-4o-mini), scoped narrowly:**
+Free hosts can't run Ollama (no GPU/persistent process). `pipeline/app/rag.py` gained an `LLM_PROVIDER` switch: `ollama` (default, every local/dev setup, free, unchanged) or `openai` (set only via Render's env vars). This is a deliberate, narrow exception to the brief's "avoid paid APIs" rule — local dev never touches it. Guardrails: a `AskUsage` daily-count table caps paid calls (`ASK_DAILY_LIMIT`, default 80/day) before calling OpenAI; user separately set a hard spending cap in the OpenAI dashboard. Verified cost: ~$0.0007/query on gpt-4o-mini, so $15 credit covers ~20,000 queries even before the daily cap — the cap is a ceiling against misuse, not a real budget constraint.
+
+**Precomputed data for deployment:** `pipeline/data/` stays gitignored (live, growing, local-only) but is a moving target — a GitHub-based Render build has nothing without a snapshot. Added `pipeline/deploy_data/` (5.5MB, regulations.db + chroma), committed, baked into the Docker image. Matches Decision #4 (deployed demo serves precomputed data).
+
+**Bugs found and fixed this session (all real, all from actually testing against the live infra rather than trusting the plan):**
+1. **Production Ask gate blocked our own backend.** `api/ask/route.ts` had a hard `production && (!useSandbox || !askRuns || !runId)` gate built for the old graff/CubeSandbox agent. Would have silently 500'd Ask in prod regardless of our RAG backend. Fixed: reg-agent is exempt from the CubeSandbox/DO requirement (it makes a plain server-side HTTP call, nothing to sandbox); in production it also skips the in-memory run-map path (Cloudflare Workers isolates don't reliably persist it across requests — that path stays for local dev, verified working there) in favour of a simple request-scoped stream, an acceptable trade given OpenAI answers in seconds.
+2. **Render 500 on every endpoint touching Chroma.** Root cause via Render's live logs: `app/rag.py` imported `ollama` unconditionally at module load; the slim deploy image deliberately excludes that package (`requirements-deploy.txt`). Fixed: lazy-import `ollama` only inside the branch that actually uses it. (A first guess — read-only container filesystem needing /tmp — was wrong but harmless; left in place as defense-in-depth.)
+3. **npm dependency conflict blocked the Cloudflare build entirely.** `@noble/ciphers`: better-auth needs v2, `@ecies/ciphers` (pulled in by `@opennextjs/cloudflare`'s dotenvx dependency) peer-needs v1. `--legacy-peer-deps` (used since Session 1 for an unrelated wrangler conflict) disables npm's peer-nesting algorithm entirely, so it silently used the wrong hoisted version instead of correctly nesting both. Fixed by switching to `npm install --force` (suppresses the same blocking errors, keeps modern peer resolution active) — resolved both this and the original conflict correctly.
+4. **Stale `bun.lock`** (upstream artifact, never actually used — this project has always run npm) made the Cloudflare build tool try to invoke `bun run build`, which isn't installed. Removed. Also found `package-lock.json` was gitignored (again an upstream-bun assumption) — un-ignored and committed it, since throwing away the just-fixed dependency resolution by not committing the lockfile would have been a real regression risk.
+5. **`WORKER_SELF_REFERENCE` service binding** still pointed at the old worker name `lawbook`; fixed to `apac-reg-tracker`.
+6. Fresh Cloudflare account needed its `workers.dev` subdomain claimed via the dashboard once (no CLI path) before any deploy would accept — user did this, then deploy succeeded.
+
+**Verified live, end-to-end, on the actual deployed URLs (not local):** homepage loads with correct branding; sign-up creates a real account in the new D1 database; `/api/regulations` search proxy returns real corpus data; a real authenticated POST to `/api/ask` streamed 250 delta events and produced a correctly grounded, cited answer (HKMA's Tokenised Bond Expert Group) with clickable numbered sources rendered exactly as designed.
+
+**Known limitation, by design:** Render's free tier sleeps after 15 min idle; first request after a quiet spell takes 30-60s to wake. Fine for a portfolio demo, worth mentioning before sharing the link.
+
+**Next up:** demo video; share link with Xhoni; optional depth (trends page, doc detail pages, weekly briefing, 4th regulator).
 
 ### 2026-07-19 — Session 13: Recommender, homepage feed, corpus deepening
 
