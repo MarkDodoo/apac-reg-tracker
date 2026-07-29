@@ -19,5 +19,10 @@ COPY deploy_data/ ./data/
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8000
 
-# Render sets $PORT; default to 8000 for local `docker run` testing.
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Render (and many PaaS hosts) run the container filesystem read-only outside
+# /tmp. SQLite needs write access to its own directory even for read-only
+# queries (WAL/lock files) — both regulations.db and Chroma's internal
+# sqlite hit this. Copy the baked snapshot to /tmp (always writable) at
+# startup and point both DBs there via env vars, rather than baking to /tmp
+# at build time (keeps the image itself portable to other hosts).
+CMD ["sh", "-c", "mkdir -p /tmp/data && cp -r /app/data/* /tmp/data/ && DATABASE_URL=sqlite:////tmp/data/regulations.db CHROMA_DIR=/tmp/data/chroma uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

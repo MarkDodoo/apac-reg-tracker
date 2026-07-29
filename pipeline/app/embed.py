@@ -11,6 +11,7 @@ Usage (from pipeline/):
 """
 
 import argparse
+import os
 from pathlib import Path
 
 import chromadb
@@ -19,7 +20,10 @@ from sqlalchemy import select
 from app.db import DATA_DIR, SessionLocal, init_db
 from app.models import Regulation
 
-CHROMA_DIR = str(Path(DATA_DIR) / "chroma")
+# Override for deployed environments with a read-only image filesystem (see
+# Dockerfile CMD, which copies baked data to /tmp and points this here) —
+# SQLite needs write access to its directory even for reads (WAL/lock files).
+CHROMA_DIR = os.environ.get("CHROMA_DIR", str(Path(DATA_DIR) / "chroma"))
 COLLECTION = "regulations"
 
 
