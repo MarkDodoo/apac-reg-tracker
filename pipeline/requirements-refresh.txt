@@ -1,0 +1,11 @@
+# Dependency set for the scheduled corpus-refresh GitHub Action
+# (.github/workflows/refresh-corpus.yml). Runs app.scheduler --once against
+# pipeline/deploy_data with LLM_PROVIDER=openai — no ollama/streamlit/
+# pandas/altair/fastapi needed, just ingest + enrich(openai) + embed + alerts.
+sqlalchemy
+httpx
+beautifulsoup4
+chromadb
+openai
+python-dotenv
+apscheduler

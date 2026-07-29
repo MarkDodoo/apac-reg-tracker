@@ -1,0 +1,62 @@
+name: Refresh corpus
+
+# Keeps the LIVE deployment current without any local machine involved.
+# Runs the pipeline (ingest -> enrich -> embed -> alerts) against
+# pipeline/deploy_data — the exact snapshot baked into the Render API image
+# (see pipeline/Dockerfile) — using OpenAI (LLM_PROVIDER=openai) since Actions
+# runners have no GPU/Ollama. Commits the refreshed snapshot back to main;
+# Render is connected to this repo and auto-redeploys on that push.
+#
+# Manual run: Actions tab -> "Refresh corpus" -> "Run workflow".
+
+on:
+  schedule:
+    - cron: "0 22 * * *" # ~06:00 Singapore time daily
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip and embedding model
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.cache/chroma
+          key: refresh-corpus-${{ runner.os }}-${{ hashFiles('pipeline/requirements-refresh.txt') }}
+
+      - name: Install dependencies
+        working-directory: pipeline
+        run: pip install -r requirements-refresh.txt
+
+      - name: Run pipeline (ingest, enrich via OpenAI, embed, alerts)
+        working-directory: pipeline
+        env:
+          DATABASE_URL: sqlite:///${{ github.workspace }}/pipeline/deploy_data/regulations.db
+          CHROMA_DIR: ${{ github.workspace }}/pipeline/deploy_data/chroma
+          LLM_PROVIDER: openai
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python -m app.scheduler --once
+
+      - name: Commit and push refreshed snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pipeline/deploy_data
+          if git diff --cached --quiet; then
+            echo "No corpus changes."
+          else
+            git commit -m "Automated corpus refresh ($(date -u +%Y-%m-%d))"
+            git push
+          fi

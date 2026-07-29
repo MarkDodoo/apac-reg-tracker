@@ -1,4 +1,4 @@
-"""LLM enrichment via local Ollama models.
+"""LLM enrichment via local Ollama models (default) or OpenAI (automation).
 
 Fills the analysis columns on ingested documents. Both tasks default to
 qwen2.5:7b — measured on 2026-07-14: qwen2.5:3b mislabelled 2 of 3 scam
@@ -15,6 +15,10 @@ Sentiment here is the LLM baseline for the FinBERT-vs-LLM bake-off
 (PROJECT_LOG "Open Questions"). Labels: Restrictive | Neutral | Facilitative,
 score in [-1, 1] where -1 = most restrictive, +1 = most facilitative.
 
+LLM_PROVIDER=openai switches both passes to gpt-4o-mini (Decision #7) — used
+by the scheduled corpus-refresh GitHub Action, which has no GPU/Ollama.
+Local dev is untouched (LLM_PROVIDER unset -> ollama).
+
 Usage (from pipeline/):
     python -m app.enrich --limit 5        # try a few first
     python -m app.enrich                  # everything with text, not yet enriched
@@ -28,14 +32,15 @@ import json
 import os
 import time
 
-import ollama
 from sqlalchemy import select
 
 from app.db import SessionLocal, init_db
 from app.models import Regulation
 
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "ollama")
 TAG_MODEL = os.environ.get("TAG_MODEL", "qwen2.5:7b")
 SUMMARY_MODEL = os.environ.get("SUMMARY_MODEL", "qwen2.5:7b")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
 # Fixed taxonomy so filters/dashboards get consistent values.
 CATEGORIES = [
@@ -68,6 +73,7 @@ TAG_SCHEMA = {
         "categories", "affected_entities", "sentiment_label",
         "sentiment_score", "impact_level",
     ],
+    "additionalProperties": False,  # required by OpenAI strict structured output
 }
 
 TAG_PROMPT = """You are a regulatory analyst for APAC financial institutions.
@@ -98,44 +104,72 @@ TEXT:
 {text}"""
 
 
+def _openai_client():
+    from openai import OpenAI  # lazy: not installed for local Ollama-only dev
+
+    return OpenAI()
+
+
 def tag_document(doc: Regulation) -> dict | None:
     """Classify one document with the small/fast model."""
-    resp = ollama.chat(
-        model=TAG_MODEL,
-        messages=[{
-            "role": "user",
-            "content": TAG_PROMPT.format(
-                source=doc.source,
-                jurisdiction=doc.jurisdiction,
-                title=doc.title,
-                text=(doc.raw_text or "")[:6000],
-            ),
-        }],
-        format=TAG_SCHEMA,
-        options={"temperature": 0, "num_ctx": 8192},
+    prompt = TAG_PROMPT.format(
+        source=doc.source,
+        jurisdiction=doc.jurisdiction,
+        title=doc.title,
+        text=(doc.raw_text or "")[:6000],
     )
+    if LLM_PROVIDER == "openai":
+        resp = _openai_client().chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {"name": "tags", "schema": TAG_SCHEMA, "strict": True},
+            },
+        )
+        content = resp.choices[0].message.content
+    else:
+        import ollama  # lazy: not installed in the deploy/automation image
+
+        resp = ollama.chat(
+            model=TAG_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            format=TAG_SCHEMA,
+            options={"temperature": 0, "num_ctx": 8192},
+        )
+        content = resp.message.content
     try:
-        return json.loads(resp.message.content)
+        return json.loads(content)
     except (json.JSONDecodeError, TypeError):
         return None
 
 
 def summarize_document(doc: Regulation) -> str | None:
     """Write the 2-3 sentence summary with the mid-size model."""
-    resp = ollama.chat(
-        model=SUMMARY_MODEL,
-        messages=[{
-            "role": "user",
-            "content": SUMMARY_PROMPT.format(
-                source=doc.source,
-                jurisdiction=doc.jurisdiction,
-                title=doc.title,
-                text=(doc.raw_text or "")[:8000],
-            ),
-        }],
-        options={"temperature": 0.2, "num_ctx": 8192},
+    prompt = SUMMARY_PROMPT.format(
+        source=doc.source,
+        jurisdiction=doc.jurisdiction,
+        title=doc.title,
+        text=(doc.raw_text or "")[:8000],
     )
-    text = (resp.message.content or "").strip()
+    if LLM_PROVIDER == "openai":
+        resp = _openai_client().chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+            max_tokens=300,
+        )
+        text = (resp.choices[0].message.content or "").strip()
+    else:
+        import ollama  # lazy: not installed in the deploy/automation image
+
+        resp = ollama.chat(
+            model=SUMMARY_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            options={"temperature": 0.2, "num_ctx": 8192},
+        )
+        text = (resp.message.content or "").strip()
     return text or None
 
 
@@ -155,7 +189,8 @@ def enrich(limit: int | None, redo: bool) -> None:
 
         # Pass 1 — tagging (small model stays loaded for the whole pass).
         todo = [d for d in docs if redo or d.sentiment_label is None]
-        print(f"Pass 1/2: tagging {len(todo)} documents with {TAG_MODEL}...")
+        active_tag_model = OPENAI_MODEL if LLM_PROVIDER == "openai" else TAG_MODEL
+        print(f"Pass 1/2: tagging {len(todo)} documents with {active_tag_model}...")
         failed = 0
         for i, doc in enumerate(todo, 1):
             tags = tag_document(doc)
@@ -177,7 +212,8 @@ def enrich(limit: int | None, redo: bool) -> None:
 
         # Pass 2 — summaries (larger model, one load).
         todo = [d for d in docs if redo or d.summary is None]
-        print(f"Pass 2/2: summarising {len(todo)} documents with {SUMMARY_MODEL}...")
+        active_sum_model = OPENAI_MODEL if LLM_PROVIDER == "openai" else SUMMARY_MODEL
+        print(f"Pass 2/2: summarising {len(todo)} documents with {active_sum_model}...")
         for i, doc in enumerate(todo, 1):
             summary = summarize_document(doc)
             if not summary:
