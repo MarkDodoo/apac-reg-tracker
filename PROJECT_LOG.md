@@ -55,6 +55,19 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 
 ## Session Log
 
+### 2026-07-30 — Session 16: Homepage carousel + hover-preview cards
+
+**Trigger:** user feedback — the "Latest developments" feed was "1-dimensional": bare headlines, no way to see what a story was about without leaving the page, no visual hook to grab interest.
+
+**Done:**
+- `NewsCarousel.tsx`: featured-stories carousel above the list (top 5 latest). Auto-rotates every 6.5s, pauses on hover, prev/next arrows, clickable dot indicators, explicit pause/play toggle (WCAG 2.2.2 — auto-moving content needs a stop control), and skips auto-rotation entirely when `prefers-reduced-motion` is set.
+- `HitCard` redesigned: summary hidden by default (compact, scannable headline + meta row), revealed on **hover** (desktop, via mouseenter/mouseleave state) or **tap** (touch/keyboard — click toggles a "pinned" state independent of hover, since touch has no hover). A separate "Read full story" link inside the revealed panel does the actual navigation, so tapping the headline itself never leaves the page — only the explicit link does.
+- New icons added (chevron down/left/right, play/pause) following the existing icon-file convention.
+- **Verified visually, not just by typecheck**: no project run-skill existed yet, so used a one-off Playwright script (installed in scratchpad, not the project) to screenshot and interact with the live dev server — confirmed carousel dot-clicking switches stories correctly (including sentiment color), hover reveals the summary, click-to-pin survives mouse-leave, and zero console errors. Screenshots showed the redesign renders cleanly in the existing minimalist design language.
+- **Found, not fixed (pre-existing, out of scope):** the inherited `AnalyticsConsentBanner` (lawplain original) visually overlaps list content at a certain scroll position — a fixed-position z-index issue unrelated to this change, worth a future look.
+
+**Next up:** consider fixing the consent-banner overlap; redeploy to make this live.
+
 ### 2026-07-29 — Session 15: Automated daily corpus refresh
 
 **Trigger:** user asked whether the "Latest developments" feed on the live site was current — it wasn't (frozen at the 2026-07-17 snapshot baked in during Session 14). Asked how to fix it "even when I send it to Xhoni" — i.e. wanted it to genuinely take care of itself, not a manual chore.

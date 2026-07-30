@@ -10,6 +10,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronDownIcon, ExternalLinkIcon } from "@/components/icons";
+import { NewsCarousel } from "@/components/NewsCarousel";
 
 interface RegHit {
   id: string;
@@ -46,43 +48,87 @@ function formatDate(value: string | null): string {
   });
 }
 
+/**
+ * Headline-first card: summary is hidden until you hover (desktop) or tap
+ * the row (touch/keyboard — click "pins" it open, independent of hover, so
+ * it works without a cursor). The toggle is a button; the actual navigation
+ * is a separate "Read full story" link inside the revealed panel, so tapping
+ * the headline never accidentally leaves the page.
+ */
 function HitCard({ h }: { h: RegHit }) {
+  const [pinned, setPinned] = useState(false);
+  const [hovering, setHovering] = useState(false);
   const href = h.source_url ?? h.url ?? "#";
+  const open = pinned || hovering;
+
   return (
-    <li className="rounded-xl border border-border bg-surface p-4 transition-colors hover:border-border-strong">
-      <a
-        href={href}
-        target="_blank"
-        rel="noreferrer"
-        className="text-[15px] font-semibold leading-snug text-foreground hover:underline"
+    <li
+      className="rounded-xl border border-border bg-surface transition-colors hover:border-border-strong"
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+    >
+      <button
+        type="button"
+        onClick={() => setPinned((p) => !p)}
+        aria-expanded={open}
+        className="flex w-full items-start justify-between gap-3 p-4 text-left"
       >
-        {h.title}
-      </a>
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-        <span className="font-semibold text-muted">{h.source}</span>
-        {h.published_date && <span>{formatDate(h.published_date)}</span>}
-        {h.doc_type && <span>{h.doc_type}</span>}
-        {h.sentiment_label && (
-          <span className="flex items-center gap-1.5">
-            <span
-              aria-hidden
-              className={`inline-block h-2 w-2 rounded-full ${
-                SENTIMENT_DOT[h.sentiment_label] ?? "bg-border"
-              }`}
-            />
-            {h.sentiment_label}
-          </span>
-        )}
-        {h.impact_level && <span>{h.impact_level} impact</span>}
-        {typeof h.relevance === "number" && (
-          <span className="tabular-nums">
-            {(h.relevance * 100).toFixed(0)}% match
-          </span>
-        )}
+        <div className="min-w-0">
+          <p className="text-[15px] font-semibold leading-snug text-foreground">
+            {h.title}
+          </p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+            <span className="font-semibold text-muted">{h.source}</span>
+            {h.published_date && <span>{formatDate(h.published_date)}</span>}
+            {h.doc_type && <span>{h.doc_type}</span>}
+            {h.sentiment_label && (
+              <span className="flex items-center gap-1.5">
+                <span
+                  aria-hidden
+                  className={`inline-block h-2 w-2 rounded-full ${
+                    SENTIMENT_DOT[h.sentiment_label] ?? "bg-border"
+                  }`}
+                />
+                {h.sentiment_label}
+              </span>
+            )}
+            {h.impact_level && <span>{h.impact_level} impact</span>}
+            {typeof h.relevance === "number" && (
+              <span className="tabular-nums">
+                {(h.relevance * 100).toFixed(0)}% match
+              </span>
+            )}
+          </div>
+        </div>
+        <ChevronDownIcon
+          className={`mt-1 h-4 w-4 shrink-0 text-muted-2 transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+
+      <div
+        className={`grid transition-all duration-200 ${
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        }`}
+      >
+        <div className="overflow-hidden">
+          <div className="px-4 pb-4">
+            {h.summary && (
+              <p className="text-sm leading-relaxed text-muted">{h.summary}</p>
+            )}
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-accent hover:underline"
+            >
+              Read full story
+              <ExternalLinkIcon className="h-3 w-3" />
+            </a>
+          </div>
+        </div>
       </div>
-      {h.summary && (
-        <p className="mt-2 text-sm leading-relaxed text-muted">{h.summary}</p>
-      )}
     </li>
   );
 }
@@ -155,7 +201,7 @@ export function RegSearch({
   // content rather than an empty search box.
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/regulations?limit=8")
+    fetch("/api/regulations?limit=10")
       .then((r) =>
         r.ok ? (r.json() as Promise<{ results?: RegHit[] }>) : null,
       )
@@ -259,15 +305,23 @@ export function RegSearch({
           </ul>
         )}
         {!hits && !loading && !error && latest && latest.length > 0 && (
-          <div>
-            <h2 className="mb-2.5 px-1 text-xs font-semibold uppercase tracking-wide text-muted-2">
-              Latest developments
-            </h2>
-            <ul className="flex flex-col gap-3">
-              {latest.map((h) => (
-                <HitCard key={h.id} h={h} />
-              ))}
-            </ul>
+          <div className="flex flex-col gap-6">
+            <NewsCarousel
+              items={latest.slice(0, 5).map((h) => ({
+                ...h,
+                url: h.source_url ?? h.url ?? "#",
+              }))}
+            />
+            <div>
+              <h2 className="mb-2.5 px-1 text-xs font-semibold uppercase tracking-wide text-muted-2">
+                Latest developments
+              </h2>
+              <ul className="flex flex-col gap-3">
+                {latest.map((h) => (
+                  <HitCard key={h.id} h={h} />
+                ))}
+              </ul>
+            </div>
           </div>
         )}
       </div>

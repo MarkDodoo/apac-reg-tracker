@@ -133,6 +133,46 @@ export function BookmarkIcon({ className }: IconProps) {
   );
 }
 
+export function ChevronDownIcon({ className }: IconProps) {
+  return (
+    <svg className={className} aria-hidden="true" {...base}>
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+export function ChevronLeftIcon({ className }: IconProps) {
+  return (
+    <svg className={className} aria-hidden="true" {...base}>
+      <path d="m15 18-6-6 6-6" />
+    </svg>
+  );
+}
+
+export function ChevronRightIcon({ className }: IconProps) {
+  return (
+    <svg className={className} aria-hidden="true" {...base}>
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+}
+
+export function PauseIcon({ className }: IconProps) {
+  return (
+    <svg className={className} aria-hidden="true" {...base}>
+      <path d="M8 5v14M16 5v14" />
+    </svg>
+  );
+}
+
+export function PlayIcon({ className }: IconProps) {
+  return (
+    <svg className={className} aria-hidden="true" {...base}>
+      <path d="M6 4.5v15l13-7.5-13-7.5Z" />
+    </svg>
+  );
+}
+
 export function HistoryIcon({ className }: IconProps) {
   return (
     <svg className={className} aria-hidden="true" {...base}>
