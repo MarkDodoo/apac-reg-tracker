@@ -55,6 +55,18 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 
 ## Session Log
 
+### 2026-07-30 — Session 17: The automation was silently broken all along
+
+**Trigger:** spot-checking the homepage carousel's newest story revealed `summary: null, sentiment_label: null` on a document from the very latest automated run — i.e. Decision #8's "self-refreshing" automation had never actually enriched anything.
+
+**Root cause:** setting the `OPENAI_API_KEY` GitHub secret used `grep '^OPENAI_API_KEY=' pipeline/.env | cut -d= -f2- | gh secret set ...`. The `.env` line had a leading space (from manually deleting just the `#` when uncommenting it), so the `^`-anchored grep matched nothing, every `gh secret set` call was piped empty input, and the secret was silently set to empty — `gh` reports success either way, and `gh secret list` shows a secret exists regardless of whether its value is empty. **Every automated run since Session 15's deploy — the first one included — ingested new documents but failed enrichment every time**, caught silently by `scheduler.py`'s per-stage error handling (`Enrichment FAILED — Missing credentials`), leaving a growing backlog of title-only, unenriched documents. What looked like a successful first run earlier was actually me conflating a *local* Ollama test with the Action's (broken) OpenAI run — the log said "FAILED" the whole time; it just wasn't checked closely enough after the job showed green.
+
+**How it was actually found:** not by reading logs more carefully, but empirically — set an unrelated, deliberately-simple test secret (`TEST_SECRET_XYZ`) and printed both secrets' lengths inside a real workflow run. The test secret resolved correctly; `OPENAI_API_KEY` was 0 characters. That isolated it to the extraction command, not GitHub/fork/permissions (all plausible-sounding theories that were tested and ruled out first: fork-restricted secrets, propagation delay, environment-secret shadowing).
+
+**Fixed:** non-anchored `grep` extraction, secret re-set and verified via a temporary diagnostic step (removed once confirmed), `.env`'s stray leading space cleaned up too. Re-ran the pipeline once to clear the backlog: **301 documents tagged and summarised in one pass, 0 failures.** Corpus now 613/613 fully enriched, confirmed live on Render.
+
+**Lesson for future automation work:** a green checkmark on a job that catches its own exceptions and prints-and-continues is not proof of success — verify the *content* the job was supposed to produce, not just its exit code. Worth eventually making `scheduler.py`'s per-stage failures louder (e.g. a non-zero exit, or a Slack/email ping) rather than silent prints, so a broken stage doesn't require a user to notice stale data before anyone looks.
+
 ### 2026-07-30 — Session 16: Homepage carousel + hover-preview cards
 
 **Trigger:** user feedback — the "Latest developments" feed was "1-dimensional": bare headlines, no way to see what a story was about without leaving the page, no visual hook to grab interest.
