@@ -40,6 +40,13 @@ jobs:
         working-directory: pipeline
         run: pip install -r requirements-refresh.txt
 
+      - name: Debug env (temporary — remove once diagnosed)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          echo "secret length via bash: ${#OPENAI_API_KEY}"
+          python3 -c "import os; v=os.environ.get('OPENAI_API_KEY'); print('python sees it:', bool(v), 'len:', len(v or ''))"
+
       - name: Run pipeline (ingest, enrich via OpenAI, embed, alerts)
         working-directory: pipeline
         env:
