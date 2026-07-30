@@ -43,9 +43,11 @@ jobs:
       - name: Debug env (temporary — remove once diagnosed)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TEST_SECRET_XYZ: ${{ secrets.TEST_SECRET_XYZ }}
         run: |
-          echo "secret length via bash: ${#OPENAI_API_KEY}"
-          python3 -c "import os; v=os.environ.get('OPENAI_API_KEY'); print('python sees it:', bool(v), 'len:', len(v or ''))"
+          echo "OPENAI_API_KEY length: ${#OPENAI_API_KEY}"
+          echo "TEST_SECRET_XYZ length: ${#TEST_SECRET_XYZ}"
+          echo "is fork: ${{ github.event.repository.fork }}"
 
       - name: Run pipeline (ingest, enrich via OpenAI, embed, alerts)
         working-directory: pipeline
