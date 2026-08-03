@@ -236,6 +236,39 @@ def recommendations_endpoint(
     return {"count": len(results), "results": results}
 
 
+class ReportRequest(BaseModel):
+    jurisdictions: list[str] = []
+    categories: list[str] = []
+    institution_type: str = ""
+    goals: str = ""
+
+
+class ReportSource(BaseModel):
+    n: int
+    title: str
+    source: str
+    published_date: str
+    url: str
+
+
+class ReportResponse(BaseModel):
+    report: str
+    model: str | None
+    sources: list[ReportSource]
+
+
+@app.post("/v1/report", response_model=ReportResponse)
+def report_endpoint(req: ReportRequest) -> ReportResponse:
+    """Stateless questionnaire -> LLM-written briefing. Nothing is stored;
+    see app/report.py for the reasoning."""
+    from app.report import generate_report
+
+    result = generate_report(
+        req.jurisdictions, req.categories, req.institution_type, req.goals
+    )
+    return ReportResponse(**result)
+
+
 @app.get("/v1/ask/stream")
 def ask_stream_endpoint(
     q: str = Query(..., min_length=5),

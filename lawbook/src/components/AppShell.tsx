@@ -14,6 +14,7 @@ import { useChrome } from "@/components/chrome/ChromeContext";
 import {
   BookIcon,
   HistoryIcon,
+  ScrollIcon,
   SearchIcon,
   SparkleIcon,
 } from "@/components/icons";
@@ -34,6 +35,11 @@ const NAV = [
     href: "/ask",
     label: "Ask RegTracker",
     icon: SparkleIcon,
+  },
+  {
+    href: "/report",
+    label: "My Briefing",
+    icon: ScrollIcon,
   },
   {
     href: "/saved",

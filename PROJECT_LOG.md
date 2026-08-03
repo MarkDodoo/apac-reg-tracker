@@ -55,6 +55,20 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 
 ## Session Log
 
+### 2026-08-03 — Session 19: Questionnaire-driven regulatory briefing
+
+**Continues Session 18's plan:** the second of the two features agreed with the "build now, stay compliant by construction" approach — a personal report generated from a questionnaire, stateless by design (Xhoni's "personalized reports" ask).
+
+**Done:**
+- `pipeline/app/report.py`: takes an explicit one-off profile (jurisdictions, categories, institution type, free-text goals), selects source documents via the existing `recommend()` scorer, and has the LLM write a structured markdown briefing (executive summary tailored to the reader, key developments grouped by theme with inline citations, a watch list, a legal-advice disclaimer). Same `LLM_PROVIDER` switch as `rag.py`/`enrich.py` — Ollama locally, OpenAI when deployed. **Nothing is persisted** — no DB write, no history; the request body IS the questionnaire, used once.
+- `POST /v1/report` endpoint; `POST /api/report` Next.js proxy (mirrors the existing proxy pattern, 280s timeout since local Ollama can take a couple of minutes for one long completion).
+- New `/report` page ("My Briefing" in the nav): questionnaire form (institution type, jurisdictions, topics, free-text goals) → generates on submit → renders via a new shared `AnswerMarkdown` component (extracted styling from `AskAgent.tsx`'s renderer into its own file rather than touching that large existing file) → numbered, linked sources below.
+- **Verified end-to-end via Playwright, including a full real generation** (not just the API in isolation): filled the form as a Hong Kong digital-asset firm asking about licensing requirements, got a well-structured, correctly-cited briefing back, rendered cleanly. Zero console errors.
+
+**Consistent with the compliance discussion:** same "explicit input, generate immediately, nothing collected" pattern as Session 18's profile feature — this is the shape of "personalization" that doesn't need a privacy review before shipping. A "save my past reports" feature would cross that line; noted as the natural point to get real advice first if ever wanted.
+
+**Next up:** both features Xhoni will assess together, per his request. After that: his point 4 (referral marketplace), pending his reply to the draft message.
+
 ### 2026-08-03 — Session 18: Personalized feed (Xhoni's idea #1 + #2, privacy-conscious)
 
 **Context:** Xhoni's feedback session — his idea #1 (first-time-user guidance), his idea #2 (personalized recommendations), and our own follow-up discussion about how to build personal-data features responsibly before "going official." Landed on: build now, but architect for minimal footprint — explicit input over passive tracking, and prefer statelessness over persistence where possible.
