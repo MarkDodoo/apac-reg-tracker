@@ -55,6 +55,21 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 
 ## Session Log
 
+### 2026-08-03 — Session 18: Personalized feed (Xhoni's idea #1 + #2, privacy-conscious)
+
+**Context:** Xhoni's feedback session — his idea #1 (first-time-user guidance), his idea #2 (personalized recommendations), and our own follow-up discussion about how to build personal-data features responsibly before "going official." Landed on: build now, but architect for minimal footprint — explicit input over passive tracking, and prefer statelessness over persistence where possible.
+
+**Done:**
+- **Client-side-only profile** (`useProfile.ts`): jurisdictions + categories, stored in `localStorage`, never sent to or persisted on our servers except as query params on the recommendations request itself. No account required, no new personal data collected — this is the "build it now, stay compliant by construction" answer from the compliance discussion, not a placeholder pending future legal review.
+- `ProfilePanel.tsx`: chip-based jurisdiction/topic picker, save/clear, with an explicit one-line disclosure ("saved only in your browser").
+- `GET /api/recommendations` proxy route (mirrors the existing `/api/regulations` proxy pattern) → pipeline's already-built `/v1/recommendations` endpoint (no backend changes needed — that endpoint existed since the recommender session).
+- `RegSearch.tsx`: idle homepage now fetches recommendations instead of the plain latest-documents feed whenever a profile is set, with the carousel and list both reflecting it; heading switches "Latest developments" → "Recommended for you"; a "Personalize this list" nudge appears for first-time (no-profile) visitors, folding in Xhoni's onboarding-guidance idea into the same feature.
+- **Verified visually end-to-end via Playwright** (default state → open panel → select Hong Kong + Crypto/Digital Assets → save → carousel and list both show genuinely relevant HKMA/crypto content → persists across reload → clear → reverts cleanly). Zero console errors.
+
+**Explicitly deferred (per the compliance discussion):** passive interaction/click tracking for inferred (not stated) preferences, and persistent server-side profiles tied to accounts. Both would need a real privacy review first; this session's feature doesn't, by design.
+
+**Next up:** questionnaire-driven report generation (stateless — generate on demand, don't persist answers by default); Xhoni's point 4 (referral marketplace paired with low-confidence Ask answers) — pending his response to the draft message.
+
 ### 2026-07-30 — Session 17: The automation was silently broken all along
 
 **Trigger:** spot-checking the homepage carousel's newest story revealed `summary: null, sentiment_label: null` on a document from the very latest automated run — i.e. Decision #8's "self-refreshing" automation had never actually enriched anything.

@@ -12,6 +12,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDownIcon, ExternalLinkIcon } from "@/components/icons";
 import { NewsCarousel } from "@/components/NewsCarousel";
+import { ProfilePanel } from "@/components/ProfilePanel";
+import { useProfile } from "@/components/useProfile";
 
 interface RegHit {
   id: string;
@@ -148,6 +150,8 @@ export function RegSearch({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestSeq = useRef(0);
+  const { profile, setProfile, clearProfile, isSet, loaded } = useProfile();
+  const [panelOpen, setPanelOpen] = useState(false);
 
   const runSearch = useCallback(
     async (q: string, m: string, src: string) => {
@@ -197,11 +201,21 @@ export function RegSearch({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Latest-developments feed for the idle homepage, so the app opens with
-  // content rather than an empty search box.
+  // Idle-homepage feed: personalized recommendations if a profile is set
+  // (client-side only, see useProfile.ts), otherwise the newest documents.
+  // Waits for `loaded` so it doesn't fetch the generic feed for a split
+  // second before localStorage is read.
   useEffect(() => {
+    if (!loaded) return;
     let cancelled = false;
-    fetch("/api/regulations?limit=10")
+    const url = isSet
+      ? `/api/recommendations?${new URLSearchParams({
+          jurisdictions: profile.jurisdictions.join(","),
+          categories: profile.categories.join(","),
+          limit: "10",
+        })}`
+      : "/api/regulations?limit=10";
+    fetch(url)
       .then((r) =>
         r.ok ? (r.json() as Promise<{ results?: RegHit[] }>) : null,
       )
@@ -212,7 +226,7 @@ export function RegSearch({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loaded, isSet, profile]);
 
   const submit = (e?: { preventDefault: () => void }) => {
     e?.preventDefault();
@@ -240,6 +254,17 @@ export function RegSearch({
 
         <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs">
           <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setPanelOpen((v) => !v)}
+              className={`rounded-full border px-2.5 py-1 transition-colors ${
+                isSet
+                  ? "border-accent bg-accent-soft font-semibold text-accent"
+                  : "border-border text-muted hover:text-foreground"
+              }`}
+            >
+              {isSet ? "Your interests" : "Personalize"}
+            </button>
             {SOURCES.map((s) => (
               <button
                 key={s}
@@ -285,6 +310,17 @@ export function RegSearch({
         </div>
       </form>
 
+      {panelOpen && (
+        <div className="mt-3">
+          <ProfilePanel
+            profile={profile}
+            onSave={setProfile}
+            onClear={clearProfile}
+            onClose={() => setPanelOpen(false)}
+          />
+        </div>
+      )}
+
       <div className="mt-4 flex-1 overflow-y-auto pb-8">
         {loading && (
           <p className="px-1 py-6 text-center text-sm text-muted">Searching…</p>
@@ -313,9 +349,20 @@ export function RegSearch({
               }))}
             />
             <div>
-              <h2 className="mb-2.5 px-1 text-xs font-semibold uppercase tracking-wide text-muted-2">
-                Latest developments
-              </h2>
+              <div className="mb-2.5 flex items-center justify-between px-1">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-2">
+                  {isSet ? "Recommended for you" : "Latest developments"}
+                </h2>
+                {!isSet && (
+                  <button
+                    type="button"
+                    onClick={() => setPanelOpen(true)}
+                    className="text-xs font-semibold text-accent hover:underline"
+                  >
+                    Personalize this list →
+                  </button>
+                )}
+              </div>
               <ul className="flex flex-col gap-3">
                 {latest.map((h) => (
                   <HitCard key={h.id} h={h} />
