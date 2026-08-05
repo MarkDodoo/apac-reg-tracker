@@ -29,6 +29,12 @@ interface RegSource {
   url: string;
 }
 
+interface RegExpert {
+  name: string;
+  bio: string;
+  contact_url: string;
+}
+
 /** Render retrieved sources as a markdown footer so the existing Ask UI
  * (which renders markdown) shows numbered, clickable citations. */
 function sourcesFooter(sources: RegSource[]): string {
@@ -37,6 +43,22 @@ function sourcesFooter(sources: RegSource[]): string {
     (s) => `${s.n}. [${s.title}](${s.url}) — ${s.source}, ${s.published_date}`,
   );
   return `\n\n---\n**Sources**\n\n${lines.join("\n")}\n`;
+}
+
+/**
+ * Renders backend-computed expert suggestions as a markdown footer.
+ * The backend only sends these when retrieval was weak (see
+ * EXPERT_SUGGESTION_THRESHOLD in rag.py) — but that trigger is never named
+ * here. This is framed as a positive next step ("this can get nuanced"),
+ * never as the AI admitting doubt, per the "never say the AI is unsure"
+ * discussion (PROJECT_LOG Session 20).
+ */
+function expertsFooter(experts: RegExpert[]): string {
+  if (experts.length === 0) return "";
+  const lines = experts.map(
+    (e) => `- **[${e.name}](${e.contact_url})** — ${e.bio}`,
+  );
+  return `\n\n---\n**This topic can get nuanced.** You may want a specialist's take:\n\n${lines.join("\n")}\n`;
 }
 
 export async function* askRegAgent(
@@ -97,7 +119,10 @@ export async function* askRegAgent(
         const line = frame.split("\n").find((l) => l.startsWith("data: "));
         if (!line) continue;
 
-        let ev: AgentEvent & { sources?: RegSource[] };
+        let ev: AgentEvent & {
+          sources?: RegSource[];
+          experts?: RegExpert[];
+        };
         try {
           ev = JSON.parse(line.slice(6));
         } catch {
@@ -105,7 +130,8 @@ export async function* askRegAgent(
         }
 
         if (ev.type === "done") {
-          footer = sourcesFooter(ev.sources ?? []);
+          footer =
+            sourcesFooter(ev.sources ?? []) + expertsFooter(ev.experts ?? []);
           if (footer) yield { type: "delta", text: footer };
           yield {
             type: "done",

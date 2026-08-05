@@ -54,6 +54,27 @@ class AlertLog(Base):
     sent_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+class ExpertListing(Base):
+    """Referral directory (Xhoni's idea, PROJECT_LOG Session 20). Demo-scale:
+    seeded via `python -m app.experts --seed-demo` with clearly fictional
+    firms — real named professionals need their own consent before being
+    listed, especially with a "featured" paid-placement angle in play, so
+    this is not populated with real firms yet. Swapping in real partners
+    later is a data change, not a rebuild."""
+
+    __tablename__ = "expert_listings"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    bio: Mapped[str] = mapped_column(Text, nullable=False)
+    jurisdictions: Mapped[list] = mapped_column(JSON)  # e.g. ["Hong Kong"]
+    categories: Mapped[list] = mapped_column(JSON)  # specialties, same taxonomy
+    contact_url: Mapped[str] = mapped_column(Text, nullable=False)
+    featured: Mapped[bool] = mapped_column(Boolean, default=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 class Regulation(Base):
     __tablename__ = "regulations"
 

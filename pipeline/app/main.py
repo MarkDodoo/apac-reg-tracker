@@ -176,11 +176,22 @@ class AskSource(BaseModel):
     relevance: float
 
 
+class ExpertHit(BaseModel):
+    id: str
+    name: str
+    bio: str
+    jurisdictions: list[str]
+    categories: list[str]
+    contact_url: str
+    featured: bool
+
+
 class AskResponse(BaseModel):
     question: str
     answer: str
     model: str
     sources: list[AskSource]
+    experts: list[ExpertHit] = []
 
 
 @app.get("/v1/ask", response_model=AskResponse)
@@ -233,6 +244,21 @@ def recommendations_endpoint(
 
     parse = lambda v: [s.strip() for s in v.split(",") if s.strip()] if v else []
     results = recommend(parse(jurisdictions), parse(categories), limit=limit)
+    return {"count": len(results), "results": results}
+
+
+@app.get("/v1/experts")
+def experts_endpoint(
+    jurisdictions: str | None = Query(None, description="comma-separated"),
+    categories: str | None = Query(None, description="comma-separated"),
+    limit: int = Query(3, ge=1, le=10),
+) -> dict:
+    """Expert referral matches (Xhoni's idea #4). Demo data only — see
+    app/experts.py."""
+    from app.experts import match_experts
+
+    parse = lambda v: [s.strip() for s in v.split(",") if s.strip()] if v else []
+    results = match_experts(parse(jurisdictions), parse(categories), limit=limit)
     return {"count": len(results), "results": results}
 
 

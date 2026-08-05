@@ -55,6 +55,23 @@ Decisions that shape the project, with reasoning. Add new ones at the bottom wit
 
 ## Session Log
 
+### 2026-08-04 — Session 20: Expert referral (Xhoni's idea #4), reframed per Mark's pushback
+
+**Context:** discussed Xhoni's point 4 (referral marketplace). Mark's pushback: no platform should visibly say "I'm not sure" — it erodes trust. Proposed instead: surface specialists based on topic interest, when the user wants it. Landed on a synthesis after discussion: keep a confidence signal, but make it *invisible* (never rendered as doubt language) and use it only to decide *when* to surface a positively-framed suggestion; run a parallel always-on topic-based channel alongside it for broader reach. Both agreed before building.
+
+**Done:**
+- `ExpertListing` model + `app/experts.py`: overlap-scored matching (category weight 2x, jurisdiction 1x, +1 for featured), same pattern as `recommend.py`. **Demo data only** — `--seed-demo` creates four clearly-labelled fictional firms ("(demo)"/"(sample listing)" in every name, `example.com` contact URLs). Real named professionals need their own consent before listing, especially with a paid "featured" tier in play — noted directly in the model's docstring so this isn't accidentally forgotten later.
+- `GET /v1/experts` + `/api/experts` proxy.
+- **Invisible confidence trigger** (`rag.py`): when the best-matching source's relevance falls below `EXPERT_SUGGESTION_THRESHOLD` (0.45), `_retrieve()` now also returns 1-2 matched experts, computed server-side where the full document metadata is already in scope. Verified precisely: an off-topic question (labor law — outside the corpus) correctly returned experts; a well-covered question (MAS dual listings) correctly returned none. `reg-agent.ts` renders this as **"This topic can get nuanced. You may want a specialist's take:"** — never "the AI isn't sure," per the discussion. The confidence number itself never reaches the UI.
+- **Broad channel**: new `SpecialistsWidget`, shown on the `/report` page (using the questionnaire's own jurisdictions/categories) and on the homepage when a profile is set — both are "the user explicitly indicated a topic" moments, satisfying Mark's "if they want to, or if they're searching a topic."
+- **Verified all three integration points visually via Playwright**, with a real authenticated session: homepage widget, report-page widget, and the Ask footer all render correctly; confirmed via full-page text scan that the phrase "unsure"/"not confident"/"uncertain" never appears anywhere on any of the three pages.
+
+**Bug found and fixed along the way (unrelated to this feature, pre-existing since the deployment session):** local sign-up was silently broken — `no such table: user`. Root cause: when the D1 database was renamed `lawbook-auth` → `apac-reg-tracker-auth` during deployment, only the *remote* database got migrated (`--remote`); the local Miniflare simulator under the new name was never migrated (`--local`), so it sat as an empty, un-migrated file this whole time. Fixed with `wrangler d1 migrations apply apac-reg-tracker-auth --local`. Worth remembering: local and remote D1 migrations are two separate commands/states, not one.
+
+**Also fixed:** an encoding bug in the expert seed data — em-dashes written via the file-editing tool were corrupted to `�` on write (Windows default-encoding issue), silently confirmed by inspecting raw stored bytes rather than trusting terminal display. Replaced with plain ASCII `--` in the seed content.
+
+**Next up:** all of Session 18-20's features are done — Mark is assessing them together per his request before deciding what's next.
+
 ### 2026-08-03 — Session 19: Questionnaire-driven regulatory briefing
 
 **Continues Session 18's plan:** the second of the two features agreed with the "build now, stay compliant by construction" approach — a personal report generated from a questionnaire, stateless by design (Xhoni's "personalized reports" ask).

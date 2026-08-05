@@ -36,6 +36,13 @@ MIN_RELEVANCE = 0.30
 MIN_SOURCES = 2
 BODY_CHARS = 1500  # per-source text budget; CPU prompt processing is the bottleneck
 
+# Below this top-hit relevance, retrieval was a stretch — quietly offer an
+# expert referral instead of hedging in the answer itself (Xhoni's idea #4,
+# reframed per the "never say the AI is unsure" discussion, PROJECT_LOG
+# Session 20). This is never shown as doubt language; see reg-agent.ts for
+# how the frontend renders it as a positive-framed suggestion.
+EXPERT_SUGGESTION_THRESHOLD = 0.45
+
 ANSWER_PROMPT = """You are a regulatory research assistant for APAC financial
 compliance officers. Answer the question using ONLY the numbered sources below.
 
@@ -66,15 +73,22 @@ def semantic_search(query: str, limit: int = 10) -> list[dict]:
     return hits
 
 
-def _retrieve(question: str, k: int) -> tuple[list[str], list[dict]]:
-    """Top-k retrieval -> (numbered context blocks, source descriptors).
+def _retrieve(
+    question: str, k: int
+) -> tuple[list[str], list[dict], list[dict]]:
+    """Top-k retrieval -> (numbered context blocks, source descriptors,
+    expert suggestions).
 
     Weak matches (below MIN_RELEVANCE) are dropped, keeping at least
-    MIN_SOURCES so the model always has something to reason over.
+    MIN_SOURCES so the model always has something to reason over. If even
+    the best match is weak (below EXPERT_SUGGESTION_THRESHOLD), also
+    returns a short expert-referral list matched on the retrieved docs'
+    own jurisdictions/categories — computed here because this is where the
+    full Regulation rows (with categories/jurisdiction) are in scope.
     """
     hits = semantic_search(question, limit=k)
     if not hits:
-        return [], []
+        return [], [], []
     strong = [h for h in hits if h["relevance"] >= MIN_RELEVANCE]
     hits = strong if len(strong) >= MIN_SOURCES else hits[:MIN_SOURCES]
 
@@ -90,10 +104,17 @@ def _retrieve(question: str, k: int) -> tuple[list[str], list[dict]]:
 
     context_blocks = []
     sources = []
+    top_relevance = 0.0
+    jurisdictions: set[str] = set()
+    categories: set[str] = set()
     for n, hit in enumerate(hits, 1):
         doc = docs.get(hit["id"])
         if not doc:
             continue
+        top_relevance = max(top_relevance, hit["relevance"])
+        if doc.jurisdiction:
+            jurisdictions.add(doc.jurisdiction)
+        categories.update(doc.categories or [])
         body = (doc.raw_text or doc.summary or "")[:BODY_CHARS]
         context_blocks.append(
             f"[{n}] {doc.title}\n"
@@ -112,7 +133,14 @@ def _retrieve(question: str, k: int) -> tuple[list[str], list[dict]]:
                 "relevance": hit["relevance"],
             }
         )
-    return context_blocks, sources
+
+    experts: list[dict] = []
+    if top_relevance < EXPERT_SUGGESTION_THRESHOLD:
+        from app.experts import match_experts
+
+        experts = match_experts(list(jurisdictions), list(categories), limit=2)
+
+    return context_blocks, sources, experts
 
 
 def _answer_messages(question: str, context_blocks: list[str]) -> list[dict]:
@@ -154,15 +182,18 @@ def _openai_client():
 
 
 def ask(question: str, k: int = 5) -> dict:
-    """Retrieve top-k docs and answer with citations. Returns answer + sources."""
-    context_blocks, sources = _retrieve(question, k)
+    """Retrieve top-k docs and answer with citations. Returns answer + sources
+    (+ experts, populated only when retrieval was weak — see
+    EXPERT_SUGGESTION_THRESHOLD)."""
+    context_blocks, sources, experts = _retrieve(question, k)
     if not context_blocks:
         return {"answer": "The corpus is empty — ingest documents first.",
-                "model": ANSWER_MODEL, "sources": []}
+                "model": ANSWER_MODEL, "sources": [], "experts": []}
 
     if LLM_PROVIDER == "openai":
         if not _consume_budget():
-            return {"answer": BUDGET_MESSAGE, "model": OPENAI_MODEL, "sources": []}
+            return {"answer": BUDGET_MESSAGE, "model": OPENAI_MODEL,
+                     "sources": [], "experts": []}
         resp = _openai_client().chat.completions.create(
             model=OPENAI_MODEL,
             messages=_answer_messages(question, context_blocks),
@@ -173,6 +204,7 @@ def ask(question: str, k: int = 5) -> dict:
             "answer": (resp.choices[0].message.content or "").strip(),
             "model": OPENAI_MODEL,
             "sources": sources,
+            "experts": experts,
         }
 
     import ollama  # lazy: not installed in the deploy image (LLM_PROVIDER=openai)
@@ -186,6 +218,7 @@ def ask(question: str, k: int = 5) -> dict:
         "answer": (resp.message.content or "").strip(),
         "model": ANSWER_MODEL,
         "sources": sources,
+        "experts": experts,
     }
 
 
@@ -197,11 +230,12 @@ def ask_stream(question: str, k: int = 5):
       {"type": "progress", ...} -> retrieval started
       {"type": "tool", ...}     -> one per retrieved source (shown as chips)
       {"type": "delta", "text"} -> answer tokens as they generate
-      {"type": "done", "text", "sources"} -> full answer + source list
+      {"type": "done", "text", "sources", "experts"} -> full answer, source
+        list, and (only when retrieval was weak) expert suggestions
     """
     yield {"type": "progress", "phase": "searching",
            "message": "Searching the regulatory corpus..."}
-    context_blocks, sources = _retrieve(question, k)
+    context_blocks, sources, experts = _retrieve(question, k)
     if not context_blocks:
         yield {"type": "error",
                "message": "The corpus is empty — ingest documents first."}
@@ -220,7 +254,7 @@ def ask_stream(question: str, k: int = 5):
     if LLM_PROVIDER == "openai" and not _consume_budget():
         yield {"type": "delta", "text": BUDGET_MESSAGE}
         yield {"type": "done", "text": BUDGET_MESSAGE, "model": model_name,
-               "sources": [], "costUsd": 0, "contextTokens": 0}
+               "sources": [], "experts": [], "costUsd": 0, "contextTokens": 0}
         return
 
     parts: list[str] = []
@@ -253,5 +287,5 @@ def ask_stream(question: str, k: int = 5):
                 yield {"type": "delta", "text": text}
 
     yield {"type": "done", "text": "".join(parts).strip(),
-           "model": model_name, "sources": sources,
+           "model": model_name, "sources": sources, "experts": experts,
            "costUsd": 0, "contextTokens": 0}

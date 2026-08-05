@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 import { AnswerMarkdown } from "@/components/AnswerMarkdown";
+import { SpecialistsWidget } from "@/components/SpecialistsWidget";
 import { CATEGORIES, JURISDICTIONS } from "@/components/useProfile";
 
 const INSTITUTION_TYPES = [
@@ -237,6 +238,11 @@ export function ReportGenerator() {
               </ol>
             </div>
           )}
+
+          <SpecialistsWidget
+            jurisdictions={jurisdictions}
+            categories={categories}
+          />
 
           <button
             type="button"

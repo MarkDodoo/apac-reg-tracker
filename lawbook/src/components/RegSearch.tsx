@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDownIcon, ExternalLinkIcon } from "@/components/icons";
 import { NewsCarousel } from "@/components/NewsCarousel";
 import { ProfilePanel } from "@/components/ProfilePanel";
+import { SpecialistsWidget } from "@/components/SpecialistsWidget";
 import { useProfile } from "@/components/useProfile";
 
 interface RegHit {
@@ -369,6 +370,12 @@ export function RegSearch({
                 ))}
               </ul>
             </div>
+            {isSet && (
+              <SpecialistsWidget
+                jurisdictions={profile.jurisdictions}
+                categories={profile.categories}
+              />
+            )}
           </div>
         )}
       </div>
